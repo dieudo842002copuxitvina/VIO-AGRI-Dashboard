@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/utils/supabase/client'
-import { Leaf, LogOut, Mail } from 'lucide-react'
+import { LogOut, User } from 'lucide-react'
 
 export default function Header() {
   const router = useRouter()
@@ -11,85 +11,73 @@ export default function Header() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const getUser = async () => {
+    const checkUser = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error) throw error
-
-        setUser(data?.session?.user || null)
+        const { data } = await supabase.auth.getUser()
+        setUser(data?.user || null)
       } catch (err) {
-        console.error('Error fetching user:', err)
-        setUser(null)
+        console.error('Error checking user:', err)
       } finally {
         setIsLoading(false)
       }
     }
 
-    getUser()
+    checkUser()
 
-    // Subscribe to auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null)
     })
 
-    return () => subscription?.unsubscribe()
+    return () => {
+      authListener?.subscription.unsubscribe()
+    }
   }, [])
 
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
-      setUser(null)
       router.push('/login')
     } catch (err) {
-      console.error('Error signing out:', err)
+      console.error('Error logging out:', err)
     }
   }
 
   return (
-    <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <Leaf className="w-8 h-8" />
-            <div>
-              <h1 className="text-2xl font-bold">VIO AGRI</h1>
-              <p className="text-green-100 text-xs">Global Data Dashboard</p>
-            </div>
-          </div>
-
-          {/* Auth Section */}
-          {!isLoading && (
-            <div>
-              {user ? (
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg">
-                    <Mail className="w-4 h-4" />
-                    <span className="text-sm font-medium">{user.email}</span>
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors font-medium"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Đăng xuất
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => router.push('/login')}
-                  className="bg-white text-green-600 hover:bg-green-50 px-6 py-2 rounded-lg font-semibold transition-colors"
-                >
-                  Đăng nhập
-                </button>
-              )}
-            </div>
-          )}
+    <header className="bg-white shadow-sm border-b border-gray-200">
+      <div className="px-6 py-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
+          <p className="text-sm text-gray-600">Chào mừng bạn trở lại</p>
         </div>
+
+        {!isLoading && (
+          <div className="flex items-center gap-4">
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-800">{user.email}</p>
+                  <p className="text-xs text-gray-600">Đã đăng nhập</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="ml-4 p-2 text-gray-600 hover:text-red-600 transition-colors"
+                  title="Đăng xuất"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => router.push('/login')}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <User className="w-4 h-4" />
+                Đăng nhập
+              </button>
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </header>
   )
 }

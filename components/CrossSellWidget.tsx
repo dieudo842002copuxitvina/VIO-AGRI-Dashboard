@@ -1,55 +1,73 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/utils/supabase/client'
-import { ShoppingCart, ExternalLink, Zap } from 'lucide-react'
+import Link from 'next/link'
+import { Zap, Package, ShoppingBag } from 'lucide-react'
+
+const products = [
+  {
+    id: 1,
+    name: 'Cảm biến đo độ ẩm',
+    price: '250.000',
+    icon: Zap,
+    description: 'Cảm biến IoT chính xác cao',
+  },
+  {
+    id: 2,
+    name: 'Bộ tưới nước tự động',
+    price: '1.200.000',
+    icon: Package,
+    description: 'Hệ thống tưới thông minh',
+  },
+  {
+    id: 3,
+    name: 'Phân bón hữu cơ',
+    price: '180.000',
+    icon: ShoppingBag,
+    description: 'Phân hữu cơ cao cấp',
+  },
+]
 
 export default function CrossSellWidget() {
-  const [products, setProducts] = useState<any[]>([])
-
-  useEffect(() => {
-    async function fetchTopProducts() {
-      // Chỉ lấy 2 sản phẩm nổi bật nhất để làm "mồi nhử"
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .limit(2)
-      
-      if (data) setProducts(data)
-    }
-    fetchTopProducts()
-  }, [])
-
-  if (products.length === 0) return null
-
   return (
-    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100 shadow-sm">
-      <div className="flex items-center mb-4">
-        <Zap className="text-orange-500 w-5 h-5 mr-2 animate-pulse" />
-        <h3 className="text-lg font-bold text-gray-800">Giải pháp nâng cao năng suất</h3>
-      </div>
-      
+    <div className="bg-white rounded-xl shadow-md border border-green-100 p-6 sticky top-6">
+      <h3 className="text-lg font-bold text-gray-800 mb-6">Sản phẩm khuyên dùng</h3>
+
       <div className="space-y-4">
-        {products.map((item) => (
-          <div key={item.id} className="bg-white p-4 rounded-xl border border-green-100 hover:shadow-md transition-all flex items-center space-x-4">
-            <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg bg-gray-100" />
-            <div className="flex-1">
-              <h4 className="font-semibold text-gray-800 text-sm line-clamp-2">{item.name}</h4>
-              <p className="text-green-600 font-bold mt-1">{item.price.toLocaleString()} đ</p>
-            </div>
-            
-            {item.affiliate_link ? (
-              <a href={item.affiliate_link} target="_blank" rel="noreferrer" className="bg-orange-100 hover:bg-orange-200 text-orange-600 p-2 rounded-lg transition-colors">
-                <ExternalLink className="w-5 h-5" />
-              </a>
-            ) : (
-              <button className="bg-green-100 hover:bg-green-200 text-green-700 p-2 rounded-lg transition-colors">
-                <ShoppingCart className="w-5 h-5" />
+        {products.map((product) => {
+          const Icon = product.icon
+          return (
+            <div
+              key={product.id}
+              className="p-4 border border-gray-100 rounded-lg hover:border-green-300 hover:bg-green-50 transition-all cursor-pointer"
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-5 h-5 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800 line-clamp-1">{product.name}</p>
+                  <p className="text-xs text-gray-500 line-clamp-1">{product.description}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-lg font-bold text-green-600">{product.price} đ</p>
+              </div>
+
+              <button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold py-2 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all">
+                Xem chi tiết
               </button>
-            )}
-          </div>
-        ))}
+            </div>
+          )
+        })}
       </div>
+
+      <Link
+        href="/shop"
+        className="block mt-6 text-center text-sm font-semibold text-green-600 hover:text-green-700 py-2 border border-green-300 rounded-lg hover:bg-green-50 transition-all"
+      >
+        Xem tất cả sản phẩm →
+      </Link>
     </div>
   )
 }
