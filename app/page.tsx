@@ -6,6 +6,8 @@ import { AlertCircle, Leaf, TrendingUp, TrendingDown, Minus } from 'lucide-react
 import PriceChart from '@/components/PriceChart'
 import Header from '@/components/Header'
 import CrossSellWidget from '@/components/CrossSellWidget'
+import WeatherWidget from '@/components/WeatherWidget'
+// ... các import khác
 
 interface Commodity {
   id: string
@@ -65,117 +67,75 @@ export default function Home() {
     }
   }
 
+  {/* Box chứa dữ liệu giá nông sản */}
+          <div className="bg-white p-6 rounded-2xl border shadow-sm">
+            <h2 className="text-xl font-bold text-gray-800 mb-6">Biến động giá Nông sản</h2>
+            
+            {isLoading ? (
+               <p className="text-gray-500 animate-pulse p-4">Đang tải dữ liệu giá...</p>
+            ) : errorMessage ? (
+               <p className="text-red-500 p-4">{errorMessage}</p>
+            ) : (
+               <>
+                 {/* 1. Hiển thị các thẻ Giá (Commodity Cards) */}
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                   {commodities.map((item) => (
+                     <div key={item.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+                       <div className="flex justify-between items-start mb-2">
+                         <span className="text-sm font-semibold text-gray-600">{item.name}</span>
+                         {getTrendIcon(item.trend)}
+                       </div>
+                       <div className="text-lg font-bold text-gray-800">
+                         {formatPrice(item.current_price)}
+                       </div>
+                       <div className="text-xs text-gray-500 mt-1">/ {item.unit}</div>
+                     </div>
+                   ))}
+                 </div>
+
+                 {/* 2. Hiển thị Biểu đồ ngay bên dưới */}
+                 <div className="border-t pt-6">
+                   <PriceChart /> 
+                 </div>
+               </>
+            )}
+          </div>
+
+  // ... phần logic useState và useEffect cũ của bạn ở trên giữ nguyên nhé ...
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header with Auth */}
-      <Header />
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Tổng quan thị trường</h1>
+        <p className="text-gray-500">Cập nhật dữ liệu thời tiết và biến động giá theo thời gian thực</p>
+      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Error State */}
-          {errorMessage && (
-            <div className="mb-8 flex items-start gap-3 p-4 bg-red-50 rounded-lg border border-red-200">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-red-700 font-medium">Lỗi kết nối cơ sở dữ liệu</p>
-                <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Loading State */}
-          {isLoading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column - Skeletons */}
-              <div className="lg:col-span-2 space-y-6">
-                {[...Array(2)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white rounded-xl shadow-md p-6 border border-green-100 animate-pulse"
-                  >
-                    <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                    <div className="grid grid-cols-3 gap-4">
-                      {[...Array(3)].map((_, j) => (
-                        <div key={j} className="space-y-2">
-                          <div className="h-4 bg-gray-100 rounded"></div>
-                          <div className="h-6 bg-gray-200 rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {/* Right Column - Skeleton */}
-              <div className="lg:col-span-1">
-                <div className="bg-white rounded-xl shadow-md p-6 border border-green-100 animate-pulse h-96">
-                  <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="h-4 bg-gray-100 rounded"></div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : commodities.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column - Price Cards and Charts */}
-              <div className="lg:col-span-2 space-y-6">
-                <h2 className="text-2xl font-bold text-gray-800 mb-6">Bảng giá nông sản</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {commodities.map((commodity) => (
-                    <div
-                      key={commodity.id}
-                      className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border border-green-100 overflow-hidden flex flex-col"
-                    >
-                      {/* Card Header */}
-                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 border-b border-green-100">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h3 className="text-lg font-bold text-gray-800">{commodity.name}</h3>
-                            <p className="text-sm text-gray-600">Mã: {commodity.symbol}</p>
-                          </div>
-                          <div className="flex-shrink-0">
-                            {getTrendIcon(commodity.trend)}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card Body */}
-                      <div className="p-4 flex-1 flex flex-col">
-                        <div className="mb-4">
-                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Giá hiện tại</p>
-                          <p className="text-2xl font-bold text-green-600">
-                            {formatPrice(commodity.current_price)}
-                          </p>
-                        </div>
-
-                        <div className="mb-6">
-                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Đơn vị tính</p>
-                          <p className="text-sm text-gray-700 font-medium">{commodity.unit}</p>
-                        </div>
-
-                        {/* Price Chart */}
-                        <PriceChart commodityId={commodity.id} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right Column - Cross Sell Widget */}
-              <div className="lg:col-span-1">
-                <CrossSellWidget />
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Leaf className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg">Không có dữ liệu nông sản</p>
-            </div>
-          )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Cột Trái (Chiếm 2 phần): Thời tiết + Biểu đồ giá */}
+        <div className="lg:col-span-2 space-y-6">
+          <WeatherWidget />
+          
+          {/* Box chứa dữ liệu giá nông sản cũ của bạn */}
+          <div className="bg-white p-6 rounded-2xl border shadow-sm">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Biến động giá Nông sản</h2>
+            
+            {/* Nếu bạn đang dùng component PriceChart thì gọi nó ra, hoặc map danh sách commodities ra đây */}
+            {isLoading ? (
+               <p className="text-gray-500 animate-pulse">Đang tải dữ liệu giá...</p>
+            ) : errorMessage ? (
+               <p className="text-red-500">{errorMessage}</p>
+            ) : (
+               <PriceChart />
+            )}
+          </div>
         </div>
+
+        {/* Cột Phải (Chiếm 1 phần): Vũ khí Bán chéo */}
+        <div className="lg:col-span-1">
+          <CrossSellWidget />
+        </div>
+
       </div>
     </div>
   )
