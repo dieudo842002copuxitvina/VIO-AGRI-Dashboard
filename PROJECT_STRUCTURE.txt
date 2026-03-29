@@ -1,0 +1,129 @@
+vio-agri-dashboard/
+│
+├── 📁 app/
+│   ├── 📁 admin/
+│   ├── 📁 api/
+│   │   ├── commodities/
+│   │   ├── decision/
+│   │   └── recommendation/
+│   ├── 📁 b2b/
+│   │   ├── page.tsx
+│   │   └── 📁 post/
+│   │       └── page.tsx
+│   ├── 📁 login/
+│   ├── 📁 shop/
+│   ├── page.tsx ✅ (Main Dashboard)
+│   ├── layout.tsx
+│   ├── globals.css
+│   └── favicon.ico
+│
+├── 📁 components/
+│   ├── CrossSellWidget.tsx
+│   ├── Header.tsx
+│   ├── InsightFeed.tsx ✅
+│   ├── PriceChart.tsx
+│   ├── RecommendationPanel.tsx ✅
+│   ├── Sidebar.tsx
+│   └── WeatherWidget.tsx
+│
+├── 📁 utils/
+│   └── 📁 supabase/
+│       └── client.ts
+│
+├── 📁 public/
+│
+├── 🔧 Config Files
+│   ├── tsconfig.json ✅
+│   ├── next.config.ts
+│   ├── postcss.config.mjs
+│   ├── eslint.config.mjs
+│   ├── package.json
+│   └── .env.local
+│
+├── 🧠 Decision Engine
+│   ├── decision.types.ts
+│   ├── decision.engine.ts
+│   ├── decision.example.ts
+│   ├── decision.supabase.ts
+│   ├── decision.utils.ts
+│   └── rules.ts
+│
+├── 🎯 Recommendation System
+│   ├── recommendation.types.ts
+│   ├── recommendation.engine.ts
+│   └── recommendation.example.ts
+│
+├── 📊 Data Pipeline
+│   ├── commodity-ingestion.ts
+│   ├── real-data.ts
+│   ├── ingest-commodities.ts
+│   ├── mock-data.ts
+│   ├── api-decision-route.ts
+│   └── api-recommendation-route.ts
+│
+├── 🪝 Hooks
+│   └── useDecision.ts ✅ (IN ROOT)
+│
+├── 🗄️ Database
+│   └── decision_engine_schema.sql
+│
+├── 📚 Documentation (70+ files)
+│   ├── FOLDER_STRUCTURE.md (THIS FILE)
+│   ├── BUILD_FIX_COMPLETE.md
+│   ├── FINAL_FIX_REPORT.md
+│   ├── FIX_SUMMARY.txt
+│   ├── MODULE_FIX_INDEX.md
+│   ├── REAL_DATA_PIPELINE_GUIDE.md
+│   ├── REAL_DATA_START_HERE.md
+│   ├── START_HERE.md
+│   ├── README.md
+│   └── ... (40+ more docs)
+│
+├── 📁 .next/ (Auto-generated build)
+├── 📁 node_modules/ (Dependencies)
+└── 📁 .git/ (Version control)
+
+
+KEY STATISTICS
+──────────────────────────────────────────
+Pages:              7+
+Components:         7
+API Routes:         3+
+React Hooks:        3+
+Business Logic:     3 modules (Decision, Recommendation, Data)
+Database Tables:    8+
+Documentation:      70+ files
+Total Files:        500+
+
+
+IMPORT STRUCTURE
+──────────────────────────────────────────
+From app/page.tsx:
+  ✓ import InsightFeed from '../components/InsightFeed'
+  ✓ import RecommendationPanel from '../components/RecommendationPanel'
+  ✓ import { useDecision } from '../useDecision'
+
+Using @ Alias:
+  ✓ import { useDecision } from '@/useDecision'
+  ✓ import InsightFeed from '@/components/InsightFeed'
+  ✓ import { DecisionEngine } from '@/decision.engine'
+
+
+QUICK START
+──────────────────────────────────────────
+npm install          Install dependencies
+npm run build        Build the project
+npm run dev          Start dev server
+npm run lint         Run linter
+
+
+PROJECT STATUS
+──────────────────────────────────────────
+✅ TypeScript configured
+✅ Components organized
+✅ API routes functional
+✅ Business logic modular
+✅ Database schema ready
+✅ Documentation complete
+✅ Import paths verified
+✅ Ready to build & deploy
