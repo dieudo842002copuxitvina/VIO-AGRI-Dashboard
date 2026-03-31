@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server'
 import { asRecord, toIsoTimestamp, toSafeNumber, toSafeText } from '@/lib/safe-data'
 import { logPlatformEvent } from '@/modules/analytics/analytics.service'
 import { getListingById, updateListingStatus } from '@/modules/listings/listings.service'
+import { updateTrustScore } from '@/modules/trust/trust.service'
 import type {
   CreateNegotiationInput,
   NegotiationRecord,
@@ -184,6 +185,8 @@ export async function respondToNegotiation(input: RespondNegotiationInput): Prom
 
     if (nextStatus === 'accepted') {
       await updateListingStatus(negotiation.listing_id, 'matched')
+    } else if (nextStatus === 'rejected') {
+      await updateTrustScore(negotiation.seller_id, 'NEGOTIATION_REJECTED', -2)
     }
 
     await logPlatformEvent({

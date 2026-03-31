@@ -3,6 +3,7 @@ import { asRecord, toIsoTimestamp, toSafeNumber, toSafeText } from '@/lib/safe-d
 import { logPlatformEvent } from '@/modules/analytics/analytics.service'
 import { getNegotiationById } from '@/modules/negotiation/negotiation.engine'
 import { updateListingStatus } from '@/modules/listings/listings.service'
+import { updateTrustScore } from '@/modules/trust/trust.service'
 import type { DeliveryStatus, TransactionRecord, TransactionStatus } from '@/modules/transaction/transaction.types'
 
 function normalizeTransactionStatus(value: unknown): TransactionStatus {
@@ -122,6 +123,23 @@ export async function getTransactionByNegotiationId(negotiationId: string): Prom
   }
 }
 
+async function logEscrowEvent(transactionId: string, event: string, metadata: Record<string, unknown> = {}) {
+  try {
+    const supabase = getSupabaseServerClient()
+    await supabase.from('escrow_logs').insert({
+      transaction_id: transactionId,
+      event,
+      metadata,
+    })
+  } catch (error) {
+    console.error('[Transaction] Failed to log escrow event', {
+      transactionId,
+      event,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+}
+
 export async function createEscrowTransaction(input: {
   negotiation_id: string
   amount?: number
@@ -191,6 +209,7 @@ export async function createEscrowTransaction(input: {
           status: transaction.status,
         },
       })
+      await logEscrowEvent(transaction.id, 'ESCROW_CREATED', { amount: transaction.amount })
     }
 
     return transaction
@@ -245,6 +264,7 @@ export async function updateFulfillment(input: {
           logistics_info: transaction.logistics_info,
         },
       })
+      await logEscrowEvent(transaction.id, 'FULFILLMENT_UPDATED', { delivery_status: transaction.delivery_status })
     }
 
     return transaction
@@ -283,6 +303,15 @@ export async function releaseEscrowTransaction(transactionId: string): Promise<T
       return null
     }
 
+    const transactionAmount = toSafeNumber(data.amount, 0)
+    const feePercentage = Math.random() * (0.05 - 0.02) + 0.02 // Random fee between 2% and 5%
+    const platformFee = transactionAmount * feePercentage
+
+    await supabase
+      .from('transactions')
+      .update({ platform_fee: platformFee })
+      .eq('id', safeTransactionId)
+
     await supabase
       .from('orders')
       .update({
@@ -305,6 +334,9 @@ export async function releaseEscrowTransaction(transactionId: string): Promise<T
           listing_id: transaction.listing_id,
         },
       })
+      await updateTrustScore(transaction.buyer_id, 'TRANSACTION_SUCCESS', 5)
+      await updateTrustScore(transaction.seller_id, 'TRANSACTION_SUCCESS', 5)
+      await logEscrowEvent(transaction.id, 'ESCROW_RELEASED', { amount: transaction.amount, platform_fee: platformFee })
     }
 
     return transaction

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, ArrowRight, Info, TrendingUp } from 'lucide-react'
 
-import type { Insight } from '@/modules/decision/decision.contract'
+import { Insight } from '@/types/decision';
 import {
   formatConfidence,
   normalizeInsightCard,

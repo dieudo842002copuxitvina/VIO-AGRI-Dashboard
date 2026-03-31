@@ -1,13 +1,22 @@
 ﻿import { NextResponse } from 'next/server'
+import { Insight, Recommendation } from '@/types/decision'
 
-import type { DecisionApiResponse, Insight } from '@/modules/decision/decision.contract'
-import type { Recommendation } from '@/modules/decision/decision.types'
-
+// Mock raw data
 const rawInsights = [
   {
     title: 'Coffee price rising',
     type: 'opportunity',
     confidence: 0.85,
+  },
+  {
+    title: 'Extreme weather warning',
+    type: 'risk',
+    // missing confidence
+  },
+  {
+    title: null, // missing title
+    type: 'info',
+    confidence: 0.5,
   },
 ]
 
@@ -17,113 +26,76 @@ const rawRecommendations = [
     commodity: 'coffee',
     reason: 'Market trending up',
   },
+  {
+    action: 'HOLD',
+    commodity: 'wheat',
+    // missing reason
+  },
+  {
+    action: 'BUY',
+    // missing commodity
+    reason: 'New trade deal announced',
+  },
 ]
 
-function normalizeInsight(raw: any): Insight {
-  const title = (typeof raw?.title === 'string' ? raw.title.trim() : '') || 'No title'
-  const type =
-    (typeof raw?.type === 'string' ? raw.type.trim() : '') ||
-    (typeof raw?.category === 'string' ? raw.category.trim() : '') ||
-    'info'
-  const confidenceValue = raw?.confidence ?? 0
-  const confidence =
-    typeof confidenceValue === 'number' && Number.isFinite(confidenceValue)
-      ? confidenceValue
-      : 0
-  const timestamp =
-    (typeof raw?.timestamp === 'string' ? raw.timestamp.trim() : '') ||
-    new Date().toISOString()
-  const id =
-    (typeof raw?.id === 'string' ? raw.id.trim() : '') ||
-    `insight-${type}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+// Normalization functions
+function normalizeInsight(raw: unknown): Insight {
+  const rawInsight = raw as Partial<Insight>;
+  const title = typeof rawInsight?.title === 'string' ? rawInsight.title.trim() : 'No title';
+
+  let type: Insight['type'] = 'info';
+  if (rawInsight?.type === 'opportunity' || rawInsight?.type === 'risk' || rawInsight?.type === 'info') {
+    type = rawInsight.type;
+  }
+
+  const confidence = typeof rawInsight?.confidence === 'number' ? rawInsight.confidence : 0;
 
   return {
-    id,
     title,
     type,
     confidence,
-    timestamp,
-  }
+  };
 }
 
-function normalizeRecommendation(raw: any): Recommendation {
-  const action = (typeof raw?.action === 'string' ? raw.action.trim() : '') || 'REVIEW'
-  const commodity = (typeof raw?.commodity === 'string' ? raw.commodity.trim() : '') || 'market'
-  const title =
-    (typeof raw?.title === 'string' ? raw.title.trim() : '') || `${action} ${commodity}`
-  const description =
-    (typeof raw?.description === 'string' ? raw.description.trim() : '') ||
-    (typeof raw?.reason === 'string' ? raw.reason.trim() : '') ||
-    'No recommendation details available'
-  const confidenceValue = raw?.confidence ?? 0
-  const confidence =
-    typeof confidenceValue === 'number' && Number.isFinite(confidenceValue)
-      ? confidenceValue
-      : 0
+function normalizeRecommendation(raw: unknown): Recommendation {
+  const rawRecommendation = raw as Partial<Recommendation>;
 
-  const rawReasoning = Array.isArray(raw?.reasoning)
-    ? raw.reasoning.filter(
-        (reason: unknown): reason is string =>
-          typeof reason === 'string' && reason.trim().length > 0
-      )
-    : []
+  let action: Recommendation['action'] = 'HOLD';
+  if (rawRecommendation?.action === 'BUY' || rawRecommendation?.action === 'SELL' || rawRecommendation?.action === 'HOLD') {
+    action = rawRecommendation.action;
+  }
 
-  const reasoning =
-    rawReasoning.length > 0
-      ? rawReasoning
-      : [
-          (typeof raw?.reason === 'string' ? raw.reason.trim() : '') ||
-            'No supporting reasoning available',
-        ]
-
-  const typeValue = (typeof raw?.type === 'string' ? raw.type.trim() : '') || 'action'
-  const type: Recommendation['type'] =
-    typeValue === 'alert' || typeValue === 'opportunity' ? typeValue : 'action'
-
-  const priorityValue = (typeof raw?.priority === 'string' ? raw.priority.trim() : '') || 'medium'
-  const priority: Recommendation['priority'] =
-    priorityValue === 'critical' ||
-    priorityValue === 'high' ||
-    priorityValue === 'low' ||
-    priorityValue === 'medium'
-      ? priorityValue
-      : 'medium'
-
-  const targetAudienceValue =
-    (typeof raw?.targetAudience === 'string' ? raw.targetAudience.trim() : '') || 'both'
-  const targetAudience: Recommendation['targetAudience'] =
-    targetAudienceValue === 'seller' ||
-    targetAudienceValue === 'buyer' ||
-    targetAudienceValue === 'both'
-      ? targetAudienceValue
-      : 'both'
+  const commodity = typeof rawRecommendation?.commodity === 'string' ? rawRecommendation.commodity.trim() : 'N/A';
+  const reason = typeof rawRecommendation?.reason === 'string' ? rawRecommendation.reason.trim() : 'No reason provided';
 
   return {
-    id:
-      (typeof raw?.id === 'string' ? raw.id.trim() : '') ||
-      `recommendation-${action.toLowerCase()}-${commodity.toLowerCase()}`,
-    type,
-    title,
-    description,
-    priority,
-    confidence,
-    reasoning,
-    suggestedAction:
-      (typeof raw?.suggestedAction === 'string' ? raw.suggestedAction.trim() : '') || action,
-    expectedImpact:
-      (typeof raw?.expectedImpact === 'string' ? raw.expectedImpact.trim() : '') ||
-      `Track ${commodity} market movement closely`,
-    targetAudience,
-  }
+    action,
+    commodity,
+    reason,
+  };
+}
+
+interface DecisionApiResponse {
+  insights: Insight[];
+  recommendations: Recommendation[];
 }
 
 function buildDecisionResponse(): DecisionApiResponse {
-  return {
-    insights: rawInsights.map(normalizeInsight),
-    recommendations: rawRecommendations.map(normalizeRecommendation),
-    summary: '1 normalized insight and 1 normalized recommendation are available.',
-    executionTime: 0,
-  }
+    try {
+        const normalizedInsights = rawInsights.map(normalizeInsight);
+        const normalizedRecommendations = rawRecommendations.map(normalizeRecommendation);
+
+        return {
+            insights: normalizedInsights,
+            recommendations: normalizedRecommendations,
+        };
+    } catch (error) {
+        console.error('Error building decision response:', error);
+        return {
+            insights: [],
+            recommendations: [],
+        };
+    }
 }
 
 export async function GET() {
@@ -133,3 +105,4 @@ export async function GET() {
 export async function POST() {
   return NextResponse.json(buildDecisionResponse())
 }
+
