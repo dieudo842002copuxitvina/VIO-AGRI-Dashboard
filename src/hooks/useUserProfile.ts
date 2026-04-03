@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+﻿'use client'
+
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 import type { UserProfile, Role } from '@/types/auth'
 import { useAuth } from './useAuth'
-
-'use client'
 
 export function useUserProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -12,7 +12,33 @@ export function useUserProfile() {
   const [error, setError] = useState<string | null>(null)
   const { user } = useAuth()
 
-  const fetchProfile = async () => {
+  const ensureProfileExists = useCallback(async (): Promise<UserProfile | null> => {
+    if (!user) {
+      return null
+    }
+
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .upsert(
+        [
+          {
+            user_id: user.id,
+            role: 'farmer',
+          },
+        ],
+        { onConflict: 'user_id' }
+      )
+      .select('*')
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    return data as UserProfile
+  }, [user])
+
+  const fetchProfile = useCallback(async () => {
     if (!user) {
       setProfile(null)
       setLoading(false)
@@ -27,22 +53,38 @@ export function useUserProfile() {
       .from('user_profiles')
       .select('*')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (error) {
       setError(error.message)
-    } else {
-      setProfile(data)
+      setLoading(false)
+      return
     }
-    setLoading(false)
-  }
+
+    if (data) {
+      setProfile(data as UserProfile)
+      setLoading(false)
+      return
+    }
+
+    try {
+      const createdProfile = await ensureProfileExists()
+      setProfile(createdProfile)
+    } catch (creationError) {
+      setError(creationError instanceof Error ? creationError.message : 'Failed to create profile')
+    } finally {
+      setLoading(false)
+    }
+  }, [ensureProfileExists, user])
 
   useEffect(() => {
-    fetchProfile()
-  }, [user])
+    void fetchProfile()
+  }, [fetchProfile])
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return null
+
+    await ensureProfileExists()
 
     const { data, error } = await supabase
       .from('user_profiles')
@@ -52,8 +94,8 @@ export function useUserProfile() {
       .single()
 
     if (error) throw error
-    setProfile(data)
-    return data
+    setProfile(data as UserProfile)
+    return data as UserProfile
   }
 
   const updateRole = async (role: Role) => {

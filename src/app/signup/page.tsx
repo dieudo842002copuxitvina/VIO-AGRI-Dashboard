@@ -1,11 +1,10 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { useUserProfile } from '@/hooks/useUserProfile'
 import { Role } from '@/types/auth'
-import { Mail, Lock, Leaf, AlertCircle, Loader, User, MapPin } from 'lucide-react'
+import { Mail, Lock, Leaf, AlertCircle, Loader, MapPin } from 'lucide-react'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -15,7 +14,6 @@ export default function SignupPage() {
   const [region, setRegion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const { updateRole } = useUserProfile()
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,14 +29,13 @@ export default function SignupPage() {
       if (error) throw error
 
       if (data.user) {
-        // Role set by trigger to 'farmer' (no client control)
-        // Admin roles assigned by superadmin only
-        // Optional: update region etc.
+        // Profile row is created lazily after the user signs in.
+        // Admin roles should still be assigned by an administrator.
         router.push('/login')
-        setErrorMessage('Đăng ký thành công! Vui lòng kiểm tra email để xác thực.')
+        setErrorMessage('ÄÄƒng kÃ½ thÃ nh cÃ´ng! Vui lÃ²ng kiá»ƒm tra email Ä‘á»ƒ xÃ¡c thá»±c.')
       }
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Lỗi đăng ký')
+      setErrorMessage(err instanceof Error ? err.message : 'Lá»—i Ä‘Äƒng kÃ½')
     } finally {
       setIsLoading(false)
     }
@@ -53,7 +50,7 @@ export default function SignupPage() {
               <Leaf className="w-7 h-7 text-green-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-800">VIO AGRI</h1>
-            <p className="text-gray-500 text-sm mt-1">Tạo tài khoản mới</p>
+            <p className="text-gray-500 text-sm mt-1">Táº¡o tÃ i khoáº£n má»›i</p>
           </div>
 
           {errorMessage && (
@@ -81,14 +78,14 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Mật khẩu</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Máº­t kháº©u</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   disabled={isLoading}
                   required
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
@@ -97,28 +94,28 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Vai trò</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Vai trÃ²</label>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as Role)}
                 disabled={isLoading}
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               >
-                <option value="farmer">Nông dân (Farmer)</option>
-                <option value="trader">Thương lái (Trader)</option>
-                <option value="exporter">Xuất khẩu (Exporter)</option>
+                <option value="farmer">NÃ´ng dÃ¢n (Farmer)</option>
+                <option value="trader">ThÆ°Æ¡ng lÃ¡i (Trader)</option>
+                <option value="exporter">Xuáº¥t kháº©u (Exporter)</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Khu vực</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Khu vá»±c</label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  placeholder="Tỉnh/Thành phố"
+                  placeholder="Tá»‰nh/ThÃ nh phá»‘"
                   disabled={isLoading}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
                 />
@@ -131,16 +128,18 @@ export default function SignupPage() {
               className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-2 rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isLoading && <Loader className="w-5 h-5 animate-spin" />}
-              {isLoading ? 'Đang đăng ký...' : 'Đăng ký tài khoản'}
+              {isLoading ? 'Äang Ä‘Äƒng kÃ½...' : 'ÄÄƒng kÃ½ tÃ i khoáº£n'}
             </button>
           </form>
 
           <p className="text-center text-gray-600 text-sm mt-6">
-            Đã có tài khoản?{' '}
-            <a href="/login" className="text-green-600 font-semibold hover:text-green-700">Đăng nhập</a>
+            ÄÃ£ cÃ³ tÃ i khoáº£n?{' '}
+            <a href="/login" className="text-green-600 font-semibold hover:text-green-700">ÄÄƒng nháº­p</a>
           </p>
         </div>
       </div>
     </div>
   )
 }
+
+

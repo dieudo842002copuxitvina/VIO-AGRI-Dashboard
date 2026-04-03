@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import TopNav from "@/components/layout/TopNav"
+import { MainLayout } from "@/components/layout/MainLayout";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VIO AGRI - Nông nghiệp 4.0",
-  description: "Nền tảng quản lý nông sản toàn diện",
+  title: "VIO AGRI - NÃ´ng nghiá»‡p 4.0",
+  description: "Ná»n táº£ng quáº£n lÃ½ nÃ´ng sáº£n toÃ n diá»‡n",
 };
 
 export default function RootLayout({
@@ -28,13 +28,8 @@ export default function RootLayout({
       lang="vi"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-  <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-        <TopNav />
-        <main className="flex-1 min-h-[calc(100vh-5rem)] bg-gradient-to-b from-zinc-50 to-slate-50 overflow-y-auto">
-          <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-16">
-            {children}
-          </div>
-        </main>
+      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <MainLayout>{children}</MainLayout>
       </body>
     </html>
   );

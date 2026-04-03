@@ -1,8 +1,9 @@
-create extension if not exists pgcrypto;
+﻿create extension if not exists pgcrypto;
 
 create table if not exists user_profiles (
   user_id uuid primary key,
   role text not null default 'farmer',
+  business_name text,
   region text,
   interests text[] default '{}',
   trust_score integer not null default 50,
@@ -11,6 +12,7 @@ create table if not exists user_profiles (
   updated_at timestamptz not null default now()
 );
 
+alter table user_profiles add column if not exists business_name text;
 alter table user_profiles add column if not exists trust_score integer not null default 50;
 alter table user_profiles add column if not exists verified boolean not null default false;
 
@@ -117,3 +119,4 @@ create table if not exists platform_events (
 create index if not exists idx_platform_events_name on platform_events(event_name);
 create index if not exists idx_platform_events_user on platform_events(user_id);
 create index if not exists idx_platform_events_created_at on platform_events(created_at desc);
+

@@ -10,7 +10,9 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổng quan' }: MainLayoutProps) {
-  // MẢNG ĐÃ ĐƯỢC LÀM SẠCH LỖI
+  // TẠM THỜI GIẢ LẬP TRẠNG THÁI LOGIN (Sau này bạn nối với useAuth của Supabase)
+  const [isLoggedIn, setIsLoggedIn] = useState(false) 
+
   const navLinks = [
     { name: 'Tổng quan', href: '/' },
     { name: 'Sàn giao thương B2B', href: '/b2b' },
@@ -51,37 +53,57 @@ export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổn
             </ul>
           </nav>
 
-          {/* Right: User Actions */}
-          <div className="flex items-center space-x-6">
+          {/* Right: User Actions (XỬ LÝ LUỒNG AUTH TẠI ĐÂY) */}
+          <div className="flex items-center space-x-4 sm:space-x-6">
             
-            {/* Notification Bell */}
-            <button className="relative p-1 text-gray-500 hover:text-emerald-600 focus:outline-none transition-colors">
-              <span className="sr-only">Xem thông báo</span>
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.13 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-              </svg>
-              {/* Chấm đỏ báo có thông báo mới */}
-              <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white"></span>
-              </span>
-            </button>
+            {isLoggedIn ? (
+              /* --- TRẠNG THÁI ĐÃ ĐĂNG NHẬP --- */
+              <>
+                <button className="relative p-1 text-gray-500 hover:text-emerald-600 focus:outline-none transition-colors">
+                  <span className="sr-only">Xem thông báo</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.13 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                  </svg>
+                  <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white"></span>
+                  </span>
+                </button>
 
-            {/* User Profile Avatar */}
-            <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border border-emerald-200 cursor-pointer hover:ring-2 hover:ring-emerald-500 transition-all">
-              JD
-            </div>
+                <Link href="/profile">
+                  <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border border-emerald-200 cursor-pointer hover:ring-2 hover:ring-emerald-500 transition-all">
+                    JD
+                  </div>
+                </Link>
 
-            {/* Nút CTA (Đăng tin mới) */}
-            <Link 
-              href="/b2b/post"
-              className="hidden sm:inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-lg active:scale-95"
-            >
-              <svg className="-ml-0.5 mr-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-              </svg>
-              Đăng tin mới
-            </Link>
+                <Link 
+                  href="/b2b/post"
+                  className="hidden sm:inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-lg active:scale-95"
+                >
+                  <svg className="-ml-0.5 mr-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                  </svg>
+                  Đăng tin
+                </Link>
+              </>
+            ) : (
+              /* --- TRẠNG THÁI CHƯA ĐĂNG NHẬP --- */
+              <>
+                <Link 
+                  href="/login" 
+                  className="text-sm font-semibold text-gray-700 hover:text-emerald-600 transition-colors"
+                >
+                  Đăng nhập
+                </Link>
+                <Link 
+                  href="/login" // Tạm trỏ về login, bạn có thể tách trang /signup sau
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-lg active:scale-95"
+                >
+                  Đăng ký miễn phí
+                </Link>
+              </>
+            )}
+
           </div>
         </div>
       </header>
