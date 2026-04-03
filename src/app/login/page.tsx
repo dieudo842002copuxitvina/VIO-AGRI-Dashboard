@@ -2,7 +2,14 @@
 
 import { FormEvent, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import { ArrowRight, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 const valueProps = [
   'Kết nối trực tiếp vựa và nhà xuất khẩu',
@@ -11,11 +18,13 @@ const valueProps = [
 ]
 
 export default function LoginPage() {
+  const router = useRouter()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
 
   const buttonLabel = useMemo(
     () => (isLogin ? 'Đăng nhập hệ thống' : 'Tạo tài khoản miễn phí'),
@@ -34,19 +43,43 @@ export default function LoginPage() {
       return
     }
 
+    setError('')
     setNotice('')
     setIsLoading(true)
 
-    console.log({ mode: isLogin ? 'login' : 'signup', email, password })
+    try {
+      const normalizedEmail = email.trim()
+      const normalizedPassword = password.trim()
 
-    window.setTimeout(() => {
+      if (isLogin) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        })
+
+        if (signInError) {
+          setError(signInError.message)
+          return
+        }
+      } else {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        })
+
+        if (signUpError) {
+          setError(signUpError.message)
+          return
+        }
+      }
+
+      router.push('/profile')
+      router.refresh()
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Đã xảy ra lỗi không mong muốn.')
+    } finally {
       setIsLoading(false)
-      setNotice(
-        isLogin
-          ? 'Mô phỏng đăng nhập thành công. Chúng ta sẽ nối Supabase Auth ở bước tiếp theo.'
-          : 'Mô phỏng tạo tài khoản thành công. Bước tiếp theo sẽ kết nối Supabase Auth.'
-      )
-    }, 1400)
+    }
   }
 
   return (
@@ -110,6 +143,7 @@ export default function LoginPage() {
                     onClick={() => {
                       setIsLogin(true)
                       setNotice('')
+                      setError('')
                     }}
                     className={`rounded-[14px] px-5 py-2.5 text-sm font-semibold transition ${
                       isLogin
@@ -124,6 +158,7 @@ export default function LoginPage() {
                     onClick={() => {
                       setIsLogin(false)
                       setNotice('')
+                      setError('')
                     }}
                     className={`rounded-[14px] px-5 py-2.5 text-sm font-semibold transition ${
                       !isLogin
@@ -181,7 +216,9 @@ export default function LoginPage() {
 
                   <div className="flex min-h-6 items-center justify-between gap-3 text-sm">
                     <span className="text-stone-500">
-                      {isLogin ? 'Đăng nhập nhanh để tiếp tục giao thương.' : 'Miễn phí tạo tài khoản, sẵn sàng kết nối đối tác.'}
+                      {isLogin
+                        ? 'Đăng nhập nhanh để tiếp tục giao thương.'
+                        : 'Miễn phí tạo tài khoản, sẵn sàng kết nối đối tác.'}
                     </span>
                     {isLogin ? (
                       <Link href="#" className="font-semibold text-emerald-700 transition hover:text-emerald-600">
@@ -190,19 +227,29 @@ export default function LoginPage() {
                     ) : null}
                   </div>
 
+                  {error ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-7 text-rose-700">
+                      {error}
+                    </div>
+                  ) : null}
+
                   <button
                     type="submit"
                     disabled={isLoading || !email || !password}
                     className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-base font-semibold text-white shadow-[0_18px_40px_-18px_rgba(5,150,105,0.88)] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
                   >
-                    {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+                    {isLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-5 w-5" />
+                    )}
                     {isLoading ? 'Đang xử lý...' : buttonLabel}
                   </button>
                 </form>
 
                 <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                   <p className="text-sm leading-7 text-stone-600">
-                    {notice || 'Biểu mẫu đang ở chế độ mô phỏng để chốt UI/UX trước khi nối Supabase Auth.'}
+                    {notice || 'Đăng nhập hoặc tạo tài khoản để truy cập không gian giao thương riêng của VIO AGRI.'}
                   </p>
                 </div>
 
