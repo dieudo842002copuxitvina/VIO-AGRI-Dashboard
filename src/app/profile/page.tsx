@@ -1,448 +1,413 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
 import {
   ArrowRight,
-  BadgeCheck,
-  BriefcaseBusiness,
-  CircleGauge,
-  Crown,
-  FileText,
-  Handshake,
+  BarChart3,
+  Eye,
+  ImageOff,
+  PackageOpen,
   Plus,
-  Rocket,
-  ShieldCheck,
-  TrendingUp,
+  Sparkles,
 } from 'lucide-react'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 
-type DashboardTab = 'listings' | 'deals'
 type ListingType = 'sell' | 'buy'
-type ListingStatus = 'active' | 'closed'
-type DealStatus = 'negotiating' | 'completed'
 
 type ListingRecord = {
   id: string
-  commodity: string
-  type: ListingType
-  quantity: number
-  price: string
-  status: ListingStatus
+  title: string | null
+  commodity: string | null
+  type: string | null
+  quantity: number | string | null
+  price: number | string | null
+  description: string | null
+  status: string | null
+  created_at: string | null
+  image_url?: string | null
 }
 
-type DealRecord = {
-  id: string
-  partner: string
-  lot: string
-  agreedPrice: string
-  status: DealStatus
+function normalizeNumber(value: number | string | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim())
+
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return 0
 }
 
-const businessName = 'Vựa Nông Sản Trường Phát'
-const trustScore = 65
+function normalizeCommodity(value: string | null | undefined): string {
+  const normalized = value?.trim().toLowerCase() ?? ''
 
-const mockListings: ListingRecord[] = [
-  {
-    id: 'listing-coffee-01',
-    commodity: 'Cà phê Robusta',
-    type: 'sell',
-    quantity: 28,
-    price: '82.500 VNĐ/kg',
-    status: 'active',
-  },
-  {
-    id: 'listing-rice-02',
-    commodity: 'Lúa gạo ST25',
-    type: 'buy',
-    quantity: 45,
-    price: '615 USD/tấn',
-    status: 'active',
-  },
-  {
-    id: 'listing-pepper-03',
-    commodity: 'Hồ tiêu đen loại 1',
-    type: 'sell',
-    quantity: 12,
-    price: '95.000 VNĐ/kg',
-    status: 'closed',
-  },
-]
+  if (normalized === 'coffee') return 'Cà phê'
+  if (normalized === 'pepper') return 'Hồ tiêu'
+  if (normalized === 'rice') return 'Lúa gạo'
+  if (normalized === 'cashew') return 'Hạt điều'
 
-const mockDeals: DealRecord[] = [
-  {
-    id: 'listing-coffee-01',
-    partner: 'Công ty Xuất khẩu Minh Hòa',
-    lot: 'Cà phê Robusta · 28 Tấn',
-    agreedPrice: '80.000 VNĐ/kg',
-    status: 'negotiating',
-  },
-  {
-    id: 'listing-rice-02',
-    partner: 'An Phúc Foods',
-    lot: 'Lúa gạo ST25 · 45 Tấn',
-    agreedPrice: '610 USD/tấn',
-    status: 'completed',
-  },
-]
-
-const tabOptions: Array<{ id: DashboardTab; label: string; icon: typeof FileText }> = [
-  { id: 'listings', label: 'Quản lý Tin Đăng', icon: FileText },
-  { id: 'deals', label: 'Quản lý Giao Dịch', icon: Handshake },
-]
-
-const listingTypeMeta: Record<ListingType, { label: string; className: string }> = {
-  sell: {
-    label: 'Bán',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  },
-  buy: {
-    label: 'Mua',
-    className: 'border-blue-200 bg-blue-50 text-blue-700',
-  },
+  return value?.trim() || 'Nông sản giao dịch'
 }
 
-const listingStatusMeta: Record<ListingStatus, { label: string; className: string }> = {
-  active: {
-    label: 'Active',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  },
-  closed: {
-    label: 'Closed',
-    className: 'border-stone-200 bg-stone-100 text-stone-600',
-  },
+function normalizeType(value: string | null | undefined): ListingType {
+  return value === 'buy' ? 'buy' : 'sell'
 }
 
-const dealStatusMeta: Record<DealStatus, { label: string; className: string }> = {
-  negotiating: {
-    label: 'Đang thương lượng',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
-  },
-  completed: {
-    label: 'Đã hoàn thành',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  },
+function normalizeStatus(value: string | null | undefined): string {
+  const normalized = value?.trim().toLowerCase() ?? 'active'
+
+  if (normalized === 'active') return 'Đang hiển thị'
+  if (normalized === 'closed') return 'Đã đóng'
+  if (normalized === 'pending') return 'Chờ duyệt'
+
+  return value?.trim() || 'Đang cập nhật'
+}
+
+function getPriceUnit(commodity: string): 'VNĐ/kg' | 'USD/tấn' {
+  const normalized = commodity.trim().toLowerCase()
+
+  if (
+    normalized === 'rice' ||
+    normalized === 'cashew' ||
+    normalized === 'lúa gạo' ||
+    normalized === 'hạt điều'
+  ) {
+    return 'USD/tấn'
+  }
+
+  return 'VNĐ/kg'
+}
+
+function formatPrice(value: number, commodity: string): string {
+  const unit = getPriceUnit(commodity)
+
+  if (unit === 'USD/tấn') {
+    return `${new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(Math.round(value || 0))}/tấn`
+  }
+
+  return `${new Intl.NumberFormat('vi-VN').format(Math.round(value || 0))} VNĐ/kg`
+}
+
+function formatQuantity(value: number): string {
+  return `${new Intl.NumberFormat('vi-VN', {
+    maximumFractionDigits: 1,
+  }).format(value || 0)} Tấn`
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return 'Vừa đăng gần đây'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Vừa đăng gần đây'
+  }
+
+  return parsed.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+function ListingCardSkeleton() {
+  return (
+    <div className="rounded-[1.75rem] border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="animate-pulse space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="h-7 w-20 rounded-full bg-gray-200" />
+          <div className="h-7 w-24 rounded-full bg-gray-200" />
+        </div>
+        <div className="h-7 w-4/5 rounded-xl bg-gray-200" />
+        <div className="h-5 w-2/5 rounded-lg bg-gray-200" />
+        <div className="space-y-2">
+          <div className="h-4 w-full rounded bg-gray-200" />
+          <div className="h-4 w-5/6 rounded bg-gray-200" />
+        </div>
+        <div className="h-14 w-full rounded-2xl bg-gray-200" />
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <div className="h-4 w-28 rounded bg-gray-200" />
+          <div className="h-4 w-24 rounded bg-gray-200" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function ProfilePage() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('listings')
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [listings, setListings] = useState<ListingRecord[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadProfileDashboard() {
+      try {
+        const supabase = getSupabaseBrowserClient()
+        const {
+          data: { user: currentUser },
+          error: authError,
+        } = await supabase.auth.getUser()
+
+        if (!isMounted) {
+          return
+        }
+
+        if (authError || !currentUser) {
+          router.replace('/login')
+          return
+        }
+
+        setUser(currentUser)
+
+        const { data, error: listingsError } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false })
+
+        if (!isMounted) {
+          return
+        }
+
+        if (listingsError) {
+          console.error(`[Profile] Failed to fetch listings: ${listingsError.message}`)
+          setError('Không thể tải danh sách tin đăng lúc này. Vui lòng thử lại sau.')
+          setListings([])
+          return
+        }
+
+        setListings(Array.isArray(data) ? (data as ListingRecord[]) : [])
+      } catch (fetchError) {
+        if (!isMounted) {
+          return
+        }
+
+        console.error('[Profile] Unexpected dashboard error:', fetchError)
+        setError('Đã có lỗi xảy ra khi tải dashboard cá nhân.')
+        setListings([])
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadProfileDashboard()
+
+    return () => {
+      isMounted = false
+    }
+  }, [router])
 
   const activeListingsCount = useMemo(
-    () => mockListings.filter((item) => item.status === 'active').length,
-    [],
+    () => listings.filter((item) => (item.status ?? '').toLowerCase() === 'active').length,
+    [listings]
   )
-  const ongoingDealsCount = useMemo(
-    () => mockDeals.filter((item) => item.status === 'negotiating').length,
-    [],
-  )
+
+  const listingCards = listings.map((listing) => {
+    const commodity = normalizeCommodity(listing.commodity)
+    const type = normalizeType(listing.type)
+    const quantity = normalizeNumber(listing.quantity)
+    const price = normalizeNumber(listing.price)
+    const typeBadgeClassName =
+      type === 'sell'
+        ? 'bg-green-100 text-green-800 border border-green-200'
+        : 'bg-blue-100 text-blue-800 border border-blue-200'
+
+    return {
+      ...listing,
+      commodity,
+      quantity,
+      price,
+      type,
+      typeLabel: type === 'sell' ? 'Bán' : 'Mua',
+      typeBadgeClassName,
+      statusLabel: normalizeStatus(listing.status),
+      createdAtLabel: formatDate(listing.created_at),
+      title: listing.title?.trim() || 'Tin giao thương chưa đặt tiêu đề',
+      description:
+        listing.description?.trim() || 'Tin đăng chưa có mô tả chi tiết. Hãy cập nhật để tăng tỷ lệ phản hồi.',
+      image_url: listing.image_url,
+    }
+  })
 
   return (
-    <main className="min-h-screen bg-gray-50 text-stone-950">
+    <main className="min-h-screen bg-gray-50 text-gray-950">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-        <section className="overflow-hidden rounded-[2.5rem] border border-stone-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.10),_transparent_26%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-6 shadow-sm shadow-stone-950/5 lg:p-10">
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_380px] xl:items-end">
-            <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-emerald-700">
-                <ShieldCheck className="h-4 w-4" />
-                Private Dashboard
+        <section className="rounded-[2rem] border border-gray-200 bg-white p-6 shadow-sm shadow-gray-950/5 sm:p-8 lg:p-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                <Sparkles className="h-4 w-4" />
+                Dashboard cá nhân
               </span>
-              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-                {businessName}
+              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl">
+                Xin chào, {user?.email || 'đối tác VIO AGRI'}
               </h1>
-              <p className="mt-4 max-w-3xl text-base leading-8 text-stone-600">
-                Không gian quản lý riêng cho doanh nghiệp theo dõi độ uy tín, kiểm soát tin đăng,
-                và chốt giao dịch trong một giao diện thống nhất theo phong cách agri-fintech.
-              </p>
-
-              <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Tin đang mở</p>
-                  <p className="mt-3 text-3xl font-semibold text-stone-950">{activeListingsCount}</p>
-                  <p className="mt-1 text-sm text-stone-600">listing còn hiệu lực trên sàn</p>
-                </div>
-                <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Deal đang chạy</p>
-                  <p className="mt-3 text-3xl font-semibold text-stone-950">{ongoingDealsCount}</p>
-                  <p className="mt-1 text-sm text-stone-600">phiên thương lượng cần theo dõi</p>
-                </div>
-                <div className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Hồ sơ doanh nghiệp</p>
-                  <p className="mt-3 text-3xl font-semibold text-stone-950">Sẵn sàng nâng hạng</p>
-                  <p className="mt-1 text-sm text-stone-600">bổ sung xác minh để tăng niềm tin</p>
-                </div>
-              </div>
-            </div>
-
-            <aside className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-950/5 sm:p-7">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">Trust Score</p>
-                  <h2 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">
-                    {trustScore}/100
-                  </h2>
-                </div>
-                <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
-                  <CircleGauge className="h-6 w-6" />
-                </div>
-              </div>
-
-              <div className="mt-6 h-3 overflow-hidden rounded-full bg-stone-100">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-300"
-                  style={{ width: `${trustScore}%` }}
-                />
-              </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Tình trạng</p>
-                  <p className="mt-2 text-sm font-semibold text-stone-950">Mức uy tín khá</p>
-                </div>
-                <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Gợi ý nâng điểm</p>
-                  <p className="mt-2 text-sm font-semibold text-stone-950">Bổ sung xác minh pháp lý</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="mt-6 inline-flex w-full items-center justify-center rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
-              >
-                Xác minh doanh nghiệp để tăng điểm
-              </button>
-            </aside>
-          </div>
-        </section>
-
-        <section className="mt-8 rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-950/5 sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">Workspace</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">
-                Điều hành listings và giao dịch cá nhân
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
-                Chuyển nhanh giữa quản lý tin đăng và các deal đang diễn ra để tối ưu doanh thu,
-                độ phủ hiển thị và tiến độ chốt đơn.
+              <p className="mt-3 max-w-2xl text-base leading-7 text-gray-600">
+                Quản lý toàn bộ tin đăng B2B của bạn trong một không gian riêng tư, rõ ràng và tối ưu cho giao dịch doanh nghiệp.
               </p>
             </div>
 
             <Link
               href="/b2b/post"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
             >
-              <Plus className="h-4 w-4" />
-              Tạo tin mới
+              <Plus className="h-5 w-5" />
+              Đăng tin mới
             </Link>
           </div>
 
-          <div className="mt-8 inline-flex w-full flex-col gap-2 rounded-[1.5rem] border border-stone-200 bg-stone-50 p-2 sm:w-auto sm:flex-row">
-            {tabOptions.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Tổng tin đăng</p>
+                  <p className="mt-3 text-3xl font-semibold text-gray-950">{isLoading ? '...' : listings.length}</p>
+                  <p className="mt-1 text-sm text-gray-600">Tổng số tin bạn đã tạo trên sàn</p>
+                </div>
+                <div className="rounded-2xl bg-white p-3 text-emerald-700 shadow-sm">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
 
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`inline-flex items-center justify-center gap-2 rounded-[1rem] px-5 py-3 text-sm font-semibold transition ${
-                    isActive
-                      ? 'bg-white text-stone-950 shadow-sm shadow-stone-950/5'
-                      : 'text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              )
-            })}
+            <div className="rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Tin đang hiển thị</p>
+                  <p className="mt-3 text-3xl font-semibold text-gray-950">{isLoading ? '...' : activeListingsCount}</p>
+                  <p className="mt-1 text-sm text-gray-600">Những cơ hội đang mở cho đối tác</p>
+                </div>
+                <div className="rounded-2xl bg-white p-3 text-blue-700 shadow-sm">
+                  <PackageOpen className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Lượt xem</p>
+                  <p className="mt-3 text-3xl font-semibold text-gray-950">0</p>
+                  <p className="mt-1 text-sm text-gray-600">Sắp ra mắt cùng bộ phân tích quan tâm</p>
+                </div>
+                <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
+                  <Eye className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">Danh mục riêng của bạn</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-gray-950">Tin đăng đang quản lý</h2>
+            </div>
           </div>
 
-          {activeTab === 'listings' ? (
-            <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-stone-200 bg-white">
-              <div className="hidden border-b border-stone-200 bg-stone-50 px-6 py-4 md:grid md:grid-cols-[1.5fr_1fr_1fr_1fr_1fr_140px] md:gap-4">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Nông sản</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Phân loại</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Số lượng</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Giá</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Trạng thái</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Hành động</span>
+          {isLoading ? (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <ListingCardSkeleton />
+              <ListingCardSkeleton />
+              <ListingCardSkeleton />
+            </div>
+          ) : error ? (
+            <div className="rounded-[1.75rem] border border-red-200 bg-red-50 px-6 py-5 text-sm font-medium text-red-700">
+              {error}
+            </div>
+          ) : listingCards.length === 0 ? (
+            <div className="rounded-[1.75rem] border border-gray-200 bg-white px-6 py-10 text-center shadow-sm">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <PackageOpen className="h-7 w-7" />
               </div>
-
-              <div className="divide-y divide-stone-200">
-                {mockListings.map((listing) => {
-                  const typeMeta = listingTypeMeta[listing.type]
-                  const statusMeta = listingStatusMeta[listing.status]
-
-                  return (
-                    <div key={listing.id} className="px-5 py-5 sm:px-6">
-                      <div className="grid gap-4 md:grid-cols-[1.5fr_1fr_1fr_1fr_1fr_140px] md:items-center md:gap-4">
-                        <div>
-                          <p className="text-base font-semibold text-stone-950">{listing.commodity}</p>
-                          <p className="mt-1 text-sm text-stone-500">Mã tin: {listing.id}</p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Phân loại
-                          </p>
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${typeMeta.className}`}>
-                            {typeMeta.label}
-                          </span>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Số lượng
-                          </p>
-                          <p className="text-sm font-semibold text-stone-900">{listing.quantity} Tấn</p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Giá
-                          </p>
-                          <p className="text-sm font-semibold text-stone-900">{listing.price}</p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Trạng thái
-                          </p>
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                            {statusMeta.label}
-                          </span>
-                        </div>
-
-                        <div>
-                          {listing.status === 'active' ? (
-                            <button
-                              type="button"
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 md:w-auto"
-                            >
-                              <Rocket className="h-4 w-4" />
-                              Boost
-                            </button>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-500">
-                              Đã đóng
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <h3 className="mt-5 text-2xl font-semibold tracking-tight text-gray-950">
+                Bạn chưa có tin đăng nào.
+              </h3>
+              <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-gray-600">
+                Tạo listing đầu tiên để bắt đầu kết nối nhà mua, nhà bán và đưa hàng hóa của bạn lên sàn giao thương B2B.
+              </p>
+              <Link
+                href="/b2b/post"
+                className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Tạo tin đăng đầu tiên
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           ) : (
-            <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-stone-200 bg-white">
-              <div className="hidden border-b border-stone-200 bg-stone-50 px-6 py-4 md:grid md:grid-cols-[1.35fr_1.2fr_1fr_1fr_220px] md:gap-4">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Đối tác</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Lô hàng</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Giá chốt</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Trạng thái</span>
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Thao tác</span>
-              </div>
-
-              <div className="divide-y divide-stone-200">
-                {mockDeals.map((deal) => {
-                  const statusMeta = dealStatusMeta[deal.status]
-
-                  return (
-                    <div key={deal.id} className="px-5 py-5 sm:px-6">
-                      <div className="grid gap-4 md:grid-cols-[1.35fr_1.2fr_1fr_1fr_220px] md:items-center md:gap-4">
-                        <div>
-                          <p className="text-base font-semibold text-stone-950">{deal.partner}</p>
-                          <p className="mt-1 flex items-center gap-2 text-sm text-stone-500">
-                            <BriefcaseBusiness className="h-4 w-4" />
-                            Hồ sơ doanh nghiệp B2B
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Lô hàng
-                          </p>
-                          <p className="text-sm font-semibold text-stone-900">{deal.lot}</p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Giá chốt
-                          </p>
-                          <p className="text-sm font-semibold text-stone-900">{deal.agreedPrice}</p>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500 md:hidden">
-                            Trạng thái
-                          </p>
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                            {statusMeta.label}
-                          </span>
-                        </div>
-
-                        <div>
-                          <Link
-                            href={`/b2b/deal/${deal.id}`}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700 md:w-auto"
-                          >
-                            Vào phòng chốt Deal
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </div>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {listingCards.map((item) => (
+                <article
+                  key={item.id}
+                  className="rounded-[1.75rem] border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md overflow-hidden flex flex-col h-full"
+                >
+                  {/* Image Container */}
+                  <div className="relative h-40 w-full overflow-hidden bg-gray-100">
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                        <ImageOff className="h-8 w-8 text-gray-400" />
+                        <p className="mt-2 text-xs font-medium text-gray-500">Chưa có hình ảnh</p>
                       </div>
+                    )}
+                    {/* Badges overlay */}
+                    <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2">
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${item.typeBadgeClassName}`}>
+                        {item.typeLabel}
+                      </span>
+                      <span className="inline-flex rounded-full border border-white/30 bg-white/95 backdrop-blur-sm px-2 py-1 text-xs font-medium text-gray-600">
+                        {item.commodity}
+                      </span>
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+
+                  {/* Content Container */}
+                  <div className="flex flex-1 flex-col p-5">
+                    <h3 className="text-lg font-semibold tracking-tight text-gray-950 line-clamp-2">{item.title}</h3>
+                    <p className="mt-2.5 text-sm leading-6 text-gray-600 line-clamp-2">{item.description}</p>
+
+                    <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                      <p className="text-sm leading-6 text-gray-700">
+                        <span className="font-bold text-emerald-600">{formatPrice(item.price, item.commodity)}</span>
+                        {' '}- {formatQuantity(item.quantity)}
+                      </p>
+                    </div>
+
+                    <div className="mt-auto flex items-center justify-between gap-3 border-t border-gray-100 pt-4 text-sm text-gray-500">
+                      <span>{item.createdAtLabel}</span>
+                      <span className="font-medium text-gray-700">Trạng thái: {item.statusLabel}</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
-
-          <div className="mt-8 grid gap-4 lg:grid-cols-3">
-            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 p-5">
-              <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-white p-3 text-emerald-700 shadow-sm">
-                  <TrendingUp className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-base font-semibold text-stone-950">Tăng tỷ lệ phản hồi</p>
-                  <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Listing có hồ sơ xác minh và điểm uy tín tốt thường nhận được nhiều yêu cầu hơn.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 p-5">
-              <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
-                  <Crown className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-base font-semibold text-stone-950">Sẵn sàng cho monetization</p>
-                  <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Nút Boost đã có sẵn để mở rộng vị trí hiển thị và doanh thu quảng bá trong bước tiếp theo.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 p-5">
-              <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-white p-3 text-blue-700 shadow-sm">
-                  <BadgeCheck className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-base font-semibold text-stone-950">Điều hành tập trung</p>
-                  <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Từ hồ sơ này, người dùng có thể theo dõi điểm uy tín, trạng thái listings và đường đi của deal.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
         </section>
       </div>
     </main>

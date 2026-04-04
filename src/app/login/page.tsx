@@ -1,15 +1,10 @@
-﻿'use client'
+'use client'
 
 import { FormEvent, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { ArrowRight, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 const valueProps = [
   'Kết nối trực tiếp vựa và nhà xuất khẩu',
@@ -19,6 +14,7 @@ const valueProps = [
 
 export default function LoginPage() {
   const router = useRouter()
+  const supabase = useMemo(() => getSupabaseBrowserClient(), [])
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

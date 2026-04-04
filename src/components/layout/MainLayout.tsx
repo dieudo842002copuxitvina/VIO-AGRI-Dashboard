@@ -1,17 +1,29 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Loader2, LogOut } from 'lucide-react'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 
 interface MainLayoutProps {
   children: React.ReactNode
   pageHeaderContent?: React.ReactNode
-  activeNavLink?: string // Để làm nổi bật link đang chọn
+  activeNavLink?: string
+}
+
+type User = {
+  id: string
+  email?: string
+  user_metadata?: {
+    name?: string
+  }
 }
 
 export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổng quan' }: MainLayoutProps) {
-  // TẠM THỜI GIẢ LẬP TRẠNG THÁI LOGIN (Sau này bạn nối với useAuth của Supabase)
-  const [isLoggedIn, setIsLoggedIn] = useState(false) 
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true) 
 
   const navLinks = [
     { name: 'Tổng quan', href: '/' },
@@ -19,6 +31,63 @@ export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổn
     { name: 'Vật tư & IoT', href: '/iot' },
     { name: 'Phân tích thị trường', href: '/market-analysis' },
   ]
+
+  // Fetch initial auth state and subscribe to changes
+  useEffect(() => {
+    let isMounted = true
+    const supabase = getSupabaseBrowserClient()
+
+    const loadUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (isMounted) {
+          setUser(user as User | null)
+        }
+      } catch (error) {
+        console.error('[MainLayout] Error fetching user:', error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadUser()
+
+    // Subscribe to auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (isMounted) {
+        setUser((session?.user as User) || null)
+      }
+    })
+
+    return () => {
+      isMounted = false
+      subscription?.unsubscribe()
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      await supabase.auth.signOut()
+      setUser(null)
+      router.push('/login')
+    } catch (error) {
+      console.error('[MainLayout] Error logging out:', error)
+    }
+  }
+
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name.charAt(0).toUpperCase()
+    }
+    if (user?.email) {
+      return user.email.charAt(0).toUpperCase()
+    }
+    return 'U'
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
@@ -53,11 +122,10 @@ export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổn
             </ul>
           </nav>
 
-          {/* Right: User Actions (XỬ LÝ LUỒNG AUTH TẠI ĐÂY) */}
+          {/* Right: User Actions */}
           <div className="flex items-center space-x-4 sm:space-x-6">
-            
-            {isLoggedIn ? (
-              /* --- TRẠNG THÁI ĐÃ ĐĂNG NHẬP --- */
+            {!isLoading && user ? (
+              /* --- LOGGED IN STATE --- */
               <>
                 <button className="relative p-1 text-gray-500 hover:text-emerald-600 focus:outline-none transition-colors">
                   <span className="sr-only">Xem thông báo</span>
@@ -70,13 +138,13 @@ export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổn
                   </span>
                 </button>
 
-                <Link href="/profile">
+                <Link href="/profile" title={user.email || 'Hồ sơ'}>
                   <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border border-emerald-200 cursor-pointer hover:ring-2 hover:ring-emerald-500 transition-all">
-                    JD
+                    {getUserDisplayName()}
                   </div>
                 </Link>
 
-                <Link 
+                <Link
                   href="/b2b/post"
                   className="hidden sm:inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-lg active:scale-95"
                 >
@@ -85,18 +153,31 @@ export function MainLayout({ children, pageHeaderContent, activeNavLink = 'Tổn
                   </svg>
                   Đăng tin
                 </Link>
+
+                <button
+                  onClick={handleLogout}
+                  className="p-1 text-gray-500 hover:text-red-600 transition-colors"
+                  title="Đăng xuất"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
               </>
+            ) : isLoading ? (
+              /* --- LOADING STATE --- */
+              <div className="p-1 text-gray-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
             ) : (
-              /* --- TRẠNG THÁI CHƯA ĐĂNG NHẬP --- */
+              /* --- NOT LOGGED IN STATE --- */
               <>
-                <Link 
-                  href="/login" 
+                <Link
+                  href="/login"
                   className="text-sm font-semibold text-gray-700 hover:text-emerald-600 transition-colors"
                 >
                   Đăng nhập
                 </Link>
-                <Link 
-                  href="/login" // Tạm trỏ về login, bạn có thể tách trang /signup sau
+                <Link
+                  href="/login"
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-lg active:scale-95"
                 >
                   Đăng ký miễn phí

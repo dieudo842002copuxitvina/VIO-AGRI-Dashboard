@@ -1,6 +1,7 @@
 ﻿'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Activity,
   Bot,
@@ -18,9 +19,20 @@ import {
   UserRound,
   Wallet,
   XCircle,
+  Loader2,
+  Settings,
+  Zap,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 
-type AdminSection = 'overview' | 'kyc' | 'listings' | 'deals' | 'bot' | 'revenue'
+type AdminSection = 'overview' | 'kyc' | 'listings' | 'deals' | 'bot' | 'revenue' | 'settings'
+
+type SystemSettings = {
+  id: number
+  is_payment_enabled: boolean
+}
 
 type MetricCard = {
   id: string
@@ -59,6 +71,7 @@ const sidebarItems: Array<{
   { id: 'deals', label: 'Giám sát Deal', icon: CircleDollarSign },
   { id: 'bot', label: 'Trạng thái Bot AI', icon: Bot },
   { id: 'revenue', label: 'Doanh thu', icon: TrendingUp },
+  { id: 'settings', label: 'Cấu hình Hệ thống', icon: Settings },
 ]
 
 const metricToneClasses = {
@@ -76,6 +89,8 @@ const metricIconClasses = {
 } as const
 
 export default function AdminPage() {
+  const router = useRouter()
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [activeSection, setActiveSection] = useState<AdminSection>('overview')
   const [metrics] = useState<MetricCard[]>([
     {
@@ -160,6 +175,72 @@ export default function AdminPage() {
     },
   ])
 
+  // Settings state
+  const [settings, setSettings] = useState<SystemSettings | null>(null)
+  const [isPaymentEnabled, setIsPaymentEnabled] = useState(false)
+  const [isTogglingPayment, setIsTogglingPayment] = useState(false)
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error'
+    visible: boolean
+  }>({ message: '', type: 'success', visible: false })
+
+  // Auth check & fetch settings (MVP: bypassing auth checks for local testing)
+  useEffect(() => {
+    let isMounted = true
+    const supabase = getSupabaseBrowserClient()
+
+    async function initializeAdmin() {
+      try {
+        // Check authentication
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!isMounted) return
+
+        if (!session) {
+          console.warn('[Admin] No session found, but bypassing for MVP admin test.')
+        }
+
+        // Fetch system settings
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('system_settings')
+          .select('*')
+          .eq('id', 1)
+          .single()
+
+        if (!isMounted) return
+
+        if (settingsError) {
+          console.warn('[Admin] RLS or query error fetching settings (expected in MVP):', settingsError.message)
+          // Set defaults on error
+          setSettings({ id: 1, is_payment_enabled: false })
+          setIsPaymentEnabled(false)
+        } else if (settingsData) {
+          setSettings(settingsData as SystemSettings)
+          setIsPaymentEnabled(settingsData.is_payment_enabled || false)
+        }
+
+        setIsCheckingAuth(false)
+      } catch (error) {
+        if (isMounted) {
+          console.error('[Admin] Error:', error)
+          // Set defaults on exception
+          setSettings({ id: 1, is_payment_enabled: false })
+          setIsPaymentEnabled(false)
+          setIsCheckingAuth(false)
+        }
+      }
+    }
+
+    initializeAdmin()
+
+    return () => {
+      isMounted = false
+    }
+  }, [router])
+
   const activeSectionMeta = useMemo(() => {
     const item = sidebarItems.find((entry) => entry.id === activeSection)
 
@@ -195,10 +276,68 @@ export default function AdminPage() {
         title: 'Doanh thu nền tảng',
         description: 'Tập trung vào GMV, dòng thu từ premium listings, KYC và giải pháp dữ liệu.',
       },
+      settings: {
+        title: 'Cấu hình Hệ thống',
+        description: 'Quản lý các tính năng chính và cài đặt của nền tảng VIO AGRI.',
+      },
     }
 
     return metaBySection[item.id]
   }, [activeSection])
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type, visible: true })
+    setTimeout(() => {
+      setToast({ message: '', type: 'success', visible: false })
+    }, 3000)
+  }
+
+  const handleTogglePayment = async () => {
+    const supabase = getSupabaseBrowserClient()
+
+    try {
+      const newValue = !isPaymentEnabled;
+
+      // 1. Cập nhật giao diện ngay lập tức cho mượt (Optimistic Update)
+      setIsPaymentEnabled(newValue);
+
+      // 2. Gửi lệnh xuống Supabase (BẮT BUỘC phải có .eq('id', 1))
+      const { error } = await supabase
+        .from('system_settings')
+        .update({ is_payment_enabled: newValue })
+        .eq('id', 1);
+
+      // 3. Nếu Supabase báo lỗi, trả lại trạng thái cũ và in lỗi chi tiết
+      if (error) {
+        setIsPaymentEnabled(!newValue); // Hoàn tác UI
+        console.error('[Admin] Lỗi chi tiết từ Supabase:', JSON.stringify(error, null, 2));
+        showToast('Không thể cập nhật cấu hình: ' + (error.message || 'Vui lòng kiểm tra Console'), 'error')
+      } else {
+        console.log('[Admin] Cập nhật công tắc thành công:', newValue);
+        showToast(newValue ? '✓ Thanh toán tự động đã được bật' : '✓ Thanh toán tự động đã được tắt', 'success')
+      }
+    } catch (err) {
+      console.error('[Admin] Lỗi bất ngờ:', err);
+      showToast('Đã xảy ra lỗi khi cập nhật', 'error')
+    }
+  };
+
+  // Show loading state
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-lg">
+          <div className="flex items-center gap-4">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            <div>
+              <p className="font-semibold text-slate-950">Xác thực...</p>
+              <p className="text-sm text-slate-600">Vui lòng chờ</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen bg-slate-100">
@@ -317,174 +456,333 @@ export default function AdminPage() {
               </div>
             </header>
 
-            <div className="flex-1 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {metrics.map((metric) => {
-                  const Icon = metric.icon
+            <div className="flex-1 px-5 py-6 sm:px-6 lg:px-8 lg:py-8 overflow-y-auto">
+              {/* OVERVIEW TAB */}
+              {activeSection === 'overview' && (
+                <>
+                  <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {metrics.map((metric) => {
+                      const Icon = metric.icon
 
-                  return (
-                    <article
-                      key={metric.id}
-                      className={`overflow-hidden rounded-[30px] border bg-[radial-gradient(circle_at_top_left,var(--tw-gradient-stops))] from-white to-white p-5 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.38)] ${metricToneClasses[metric.tone]}`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
+                      return (
+                        <article
+                          key={metric.id}
+                          className={`overflow-hidden rounded-[30px] border bg-[radial-gradient(circle_at_top_left,var(--tw-gradient-stops))] from-white to-white p-5 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.38)] ${metricToneClasses[metric.tone]}`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-medium text-slate-500">{metric.label}</p>
+                              <p className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
+                                {metric.value}
+                              </p>
+                            </div>
+                            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${metricIconClasses[metric.tone]}`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                          </div>
+
+                          <div className="mt-6 flex items-center gap-2 text-sm font-medium text-slate-600">
+                            {metric.id === 'gmv' || metric.id === 'new-users' ? (
+                              <>
+                                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                                <span className="text-emerald-700">{metric.detail}</span>
+                              </>
+                            ) : metric.id === 'pending-listings' ? (
+                              <>
+                                <Siren className="h-4 w-4 text-rose-600" />
+                                <span className="text-rose-700">{metric.detail}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+                                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                </span>
+                                <span className="text-emerald-700">{metric.detail}</span>
+                              </>
+                            )}
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </section>
+
+                  <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+                    <div className="rounded-[32px] border border-slate-200 bg-white shadow-[0_22px_60px_-42px_rgba(15,23,42,0.35)]">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
                         <div>
-                          <p className="text-sm font-medium text-slate-500">{metric.label}</p>
-                          <p className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-                            {metric.value}
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                            Action Center
                           </p>
+                          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                            Yêu cầu KYC chờ duyệt
+                          </h3>
                         </div>
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${metricIconClasses[metric.tone]}`}>
-                          <Icon className="h-5 w-5" />
+                        <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          {kycRequests.length} hồ sơ mới
                         </div>
                       </div>
 
-                      <div className="mt-6 flex items-center gap-2 text-sm font-medium text-slate-600">
-                        {metric.id === 'gmv' || metric.id === 'new-users' ? (
-                          <>
-                            <TrendingUp className="h-4 w-4 text-emerald-600" />
-                            <span className="text-emerald-700">{metric.detail}</span>
-                          </>
-                        ) : metric.id === 'pending-listings' ? (
-                          <>
-                            <Siren className="h-4 w-4 text-rose-600" />
-                            <span className="text-rose-700">{metric.detail}</span>
-                          </>
+                      <div className="overflow-x-auto px-2 pb-2 pt-1">
+                        <table className="min-w-full border-separate border-spacing-y-3 px-4 text-left">
+                          <thead>
+                            <tr className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                              <th className="px-4 py-2">Doanh nghiệp</th>
+                              <th className="px-4 py-2">Người liên hệ</th>
+                              <th className="px-4 py-2">Khu vực</th>
+                              <th className="px-4 py-2">Thời gian</th>
+                              <th className="px-4 py-2 text-right">Hành động</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {kycRequests.map((request) => (
+                              <tr key={request.id} className="rounded-2xl bg-slate-50 text-sm text-slate-700 shadow-sm">
+                                <td className="rounded-l-2xl px-4 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                                      <Building2 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-slate-950">{request.businessName}</p>
+                                      <p className="mt-1 text-xs text-slate-500">KYC doanh nghiệp đang chờ kiểm tra</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 font-medium">{request.contactName}</td>
+                                <td className="px-4 py-4">{request.region}</td>
+                                <td className="px-4 py-4 text-slate-500">{request.submittedAt}</td>
+                                <td className="rounded-r-2xl px-4 py-4">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                    >
+                                      <XCircle className="h-3.5 w-3.5" />
+                                      Reject
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[32px] border border-slate-200 bg-white shadow-[0_22px_60px_-42px_rgba(15,23,42,0.35)]">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                            Live Deal Watch
+                          </p>
+                          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                            Giao dịch (Deals) đang nóng
+                          </h3>
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                          </span>
+                          Trực tiếp
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 p-6">
+                        {hotDeals.map((deal, index) => (
+                          <article
+                            key={deal.id}
+                            className="rounded-[26px] border border-slate-200 bg-slate-50/90 p-5 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                                  Deal #{index + 1}
+                                </div>
+                                <h4 className="mt-3 text-lg font-semibold tracking-tight text-slate-950">
+                                  {deal.partner}
+                                </h4>
+                              </div>
+                              <div className="rounded-2xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-700">
+                                {deal.value}
+                              </div>
+                            </div>
+                            <p className="mt-4 text-sm font-medium text-slate-700">{deal.commodity}</p>
+                            <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+                              <span className="text-slate-500">{deal.status}</span>
+                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                                Theo dõi
+                                <ChevronRight className="h-4 w-4" />
+                              </span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                </>
+              )}
+
+              {/* SETTINGS TAB */}
+              {activeSection === 'settings' && (
+                <div className="mx-auto max-w-4xl space-y-6">
+                  {/* Toast Notification */}
+                  {toast.visible && (
+                    <div
+                      className={`rounded-[1.5rem] border px-6 py-4 shadow-sm ${
+                        toast.type === 'success'
+                          ? 'border-emerald-200 bg-emerald-50'
+                          : 'border-red-200 bg-red-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {toast.type === 'success' ? (
+                          <CheckCircle className="h-5 w-5 flex-shrink-0 text-emerald-600" />
                         ) : (
-                          <>
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
-                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                            </span>
-                            <span className="text-emerald-700">{metric.detail}</span>
-                          </>
+                          <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
                         )}
+                        <p
+                          className={`text-sm font-medium ${
+                            toast.type === 'success'
+                              ? 'text-emerald-800'
+                              : 'text-red-800'
+                          }`}
+                        >
+                          {toast.message}
+                        </p>
                       </div>
-                    </article>
-                  )
-                })}
-              </section>
-
-              <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-                <div className="rounded-[32px] border border-slate-200 bg-white shadow-[0_22px_60px_-42px_rgba(15,23,42,0.35)]">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                        Action Center
-                      </p>
-                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-                        Yêu cầu KYC chờ duyệt
-                      </h3>
                     </div>
-                    <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      {kycRequests.length} hồ sơ mới
-                    </div>
-                  </div>
+                  )}
 
-                  <div className="overflow-x-auto px-2 pb-2 pt-1">
-                    <table className="min-w-full border-separate border-spacing-y-3 px-4 text-left">
-                      <thead>
-                        <tr className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                          <th className="px-4 py-2">Doanh nghiệp</th>
-                          <th className="px-4 py-2">Người liên hệ</th>
-                          <th className="px-4 py-2">Khu vực</th>
-                          <th className="px-4 py-2">Thời gian</th>
-                          <th className="px-4 py-2 text-right">Hành động</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {kycRequests.map((request) => (
-                          <tr key={request.id} className="rounded-2xl bg-slate-50 text-sm text-slate-700 shadow-sm">
-                            <td className="rounded-l-2xl px-4 py-4">
+                  {/* Settings Card */}
+                  <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm">
+                    <div className="px-6 py-8 sm:px-8 sm:py-10">
+                      <div className="space-y-8">
+                        {/* Payment Gateway Toggle */}
+                        <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-6">
+                          <div className="flex items-center justify-between gap-6">
+                            <div className="flex-1">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                                  <Building2 className="h-5 w-5" />
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                                  <Zap className="h-6 w-6" />
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-slate-950">{request.businessName}</p>
-                                  <p className="mt-1 text-xs text-slate-500">KYC doanh nghiệp đang chờ kiểm tra</p>
+                                  <h3 className="text-lg font-semibold text-gray-950">
+                                    Cổng Thanh Toán Ký Quỹ Tự Động
+                                  </h3>
+                                  <p className="mt-2 text-sm text-gray-600">
+                                    Bật để cho phép người dùng thanh toán cọc qua PayOS/VNPay. Tắt để sử dụng thanh toán thủ công qua email.
+                                  </p>
                                 </div>
                               </div>
-                            </td>
-                            <td className="px-4 py-4 font-medium">{request.contactName}</td>
-                            <td className="px-4 py-4">{request.region}</td>
-                            <td className="px-4 py-4 text-slate-500">{request.submittedAt}</td>
-                            <td className="rounded-r-2xl px-4 py-4">
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                              <div className="mt-4">
+                                <span
+                                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    isPaymentEnabled
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}
                                 >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" />
-                                  Reject
-                                </button>
+                                  {isPaymentEnabled ? '✓ Đã bật' : '○ Đã tắt'}
+                                </span>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="rounded-[32px] border border-slate-200 bg-white shadow-[0_22px_60px_-42px_rgba(15,23,42,0.35)]">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-5">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                        Live Deal Watch
-                      </p>
-                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-                        Giao dịch (Deals) đang nóng
-                      </h3>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                      </span>
-                      Trực tiếp
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 p-6">
-                    {hotDeals.map((deal, index) => (
-                      <article
-                        key={deal.id}
-                        className="rounded-[26px] border border-slate-200 bg-slate-50/90 p-5 shadow-sm"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                              Deal #{index + 1}
                             </div>
-                            <h4 className="mt-3 text-lg font-semibold tracking-tight text-slate-950">
-                              {deal.partner}
-                            </h4>
-                          </div>
-                          <div className="rounded-2xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-700">
-                            {deal.value}
+
+                            {/* iOS-style Toggle Switch */}
+                            <button
+                              onClick={handleTogglePayment}
+                              disabled={isTogglingPayment}
+                              className={`relative inline-flex h-14 w-28 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-4 ${
+                                isPaymentEnabled
+                                  ? 'bg-emerald-600 shadow-lg shadow-emerald-600/25 focus:ring-emerald-200'
+                                  : 'bg-gray-300 shadow-sm focus:ring-gray-200'
+                              } disabled:cursor-not-allowed disabled:opacity-60`}
+                              title={isTogglingPayment ? 'Đang cập nhật...' : 'Bấm để bật/tắt'}
+                            >
+                              <span
+                                className={`inline-flex h-12 w-12 transform items-center justify-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                  isPaymentEnabled ? 'translate-x-8' : 'translate-x-1'
+                                }`}
+                              >
+                                {isTogglingPayment ? (
+                                  <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+                                ) : (
+                                  <span
+                                    className={`text-lg font-bold ${
+                                      isPaymentEnabled ? 'text-emerald-600' : 'text-gray-400'
+                                    }`}
+                                  >
+                                    {isPaymentEnabled ? '✓' : '✕'}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
                           </div>
                         </div>
-                        <p className="mt-4 text-sm font-medium text-slate-700">{deal.commodity}</p>
-                        <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-                          <span className="text-slate-500">{deal.status}</span>
-                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
-                            Theo dõi
-                            <ChevronRight className="h-4 w-4" />
-                          </span>
+
+                        {/* Settings Info Boxes */}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                            <h4 className="font-semibold text-blue-900">💡 Tự động</h4>
+                            <p className="mt-2 text-sm text-blue-800">
+                              Khi BẬT: Người dùng sẽ thấy các cổng thanh toán PayOS/VNPay trên Deal Room.
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                            <h4 className="font-semibold text-amber-900">📧 Thủ công</h4>
+                            <p className="mt-2 text-sm text-amber-800">
+                              Khi TẮT: Người dùng thực hiện chuyển khoản trực tiếp vào tài khoản được cấu hình.
+                            </p>
+                          </div>
                         </div>
-                      </article>
-                    ))}
+
+                        {/* Important Notice */}
+                        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-6">
+                          <div className="flex gap-4">
+                            <div className="flex-shrink-0 pt-0.5">
+                              <svg className="h-5 w-5 text-indigo-700" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0zM8 8a1 1 0 000 2h6a1 1 0 100-2H8zm1 5a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-indigo-900">Lưu ý quan trọng</p>
+                              <p className="mt-2 text-sm text-indigo-800">
+                                Các thay đổi cấu hình sẽ có hiệu lực <strong>ngay lập tức</strong>. Người dùng sẽ nhìn thấy thay đổi khi tải lại Deal Room của họ.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="border-t border-gray-100 bg-gray-50 px-6 py-4 sm:px-8">
+                      <p className="text-xs text-gray-600">
+                        Lần cập nhật cuối: {new Date().toLocaleString('vi-VN')}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </section>
+              )}
+
+              {/* PLACEHOLDER TABS */}
+              {activeSection !== 'overview' && activeSection !== 'settings' && (
+                <div className="flex h-full items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50/50">
+                  <div className="text-center">
+                    <p className="text-lg font-semibold text-slate-600">
+                      {sidebarItems.find((item) => item.id === activeSection)?.label}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-500">Coming soon...</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </main>

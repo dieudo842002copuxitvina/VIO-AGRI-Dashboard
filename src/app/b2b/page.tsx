@@ -1,121 +1,79 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
-import {
-  ArrowRight,
-  BadgeCheck,
-  Building2,
-  Crown,
-  Package,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowRight, ImageOff, Loader2, PackageOpen, Plus, Sparkles } from 'lucide-react'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 
 type ListingType = 'sell' | 'buy'
 
-type MarketplaceListing = {
+type ListingRecord = {
   id: string
-  type: ListingType
+  user_id: string
+  title: string | null
+  commodity: string | null
+  type: string | null
+  quantity: number | string | null
+  price: number | string | null
+  description: string | null
+  status: string | null
+  created_at: string | null
+  image_url?: string | null
+}
+
+type CategoryLabel = 'Tất cả' | 'Cà phê' | 'Hồ tiêu' | 'Lúa gạo' | 'Hạt điều' | 'Khác'
+
+type ListingCardViewModel = {
+  id: string
+  user_id: string
+  title: string
   commodity: string
+  type: ListingType
   quantity: number
   price: number
-  status: string
-  isBoosted: boolean
-  businessName: string
-  trustScore: number | null
-  verified: boolean
-  createdAt: string | null
+  description: string
+  createdAtLabel: string
+  image_url?: string | null
 }
 
-const commodityLabelMap = {
-  coffee: 'Cà phê',
-  pepper: 'Hồ tiêu',
-  rice: 'Lúa gạo',
-  cashew: 'Hạt điều',
-} as const
+const categoryTabs: CategoryLabel[] = ['Tất cả', 'Cà phê', 'Hồ tiêu', 'Lúa gạo', 'Hạt điều', 'Khác']
 
-const typeConfig: Record<
-  ListingType,
-  {
-    label: string
-    badgeClassName: string
-    buttonClassName: string
-    accentClassName: string
-  }
-> = {
-  sell: {
-    label: 'Bán',
-    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    buttonClassName:
-      'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-200',
-    accentClassName: 'from-emerald-500 via-emerald-400 to-emerald-300',
-  },
-  buy: {
-    label: 'Mua',
-    badgeClassName: 'border-blue-200 bg-blue-50 text-blue-700',
-    buttonClassName: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-200',
-    accentClassName: 'from-blue-500 via-sky-400 to-cyan-300',
-  },
-}
-
-function toSafeText(value: unknown, fallback = ''): string {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback
-}
-
-function toSafeNumber(value: unknown, fallback = 0): number {
+function normalizeNumber(value: number | string | null | undefined): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
   }
 
   if (typeof value === 'string') {
-    const normalized = Number(value.trim())
+    const parsed = Number(value.trim())
 
-    if (Number.isFinite(normalized)) {
-      return normalized
+    if (Number.isFinite(parsed)) {
+      return parsed
     }
   }
 
-  return fallback
+  return 0
 }
 
-function toOptionalNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
+function normalizeCommodity(value: string | null | undefined): CategoryLabel {
+  const normalized = value?.trim().toLowerCase() ?? ''
 
-  if (typeof value === 'string') {
-    const normalized = Number(value.trim())
+  if (normalized === 'coffee' || normalized === 'cà phê' || normalized === 'ca phe') return 'Cà phê'
+  if (normalized === 'pepper' || normalized === 'hồ tiêu' || normalized === 'ho tieu') return 'Hồ tiêu'
+  if (normalized === 'rice' || normalized === 'lúa gạo' || normalized === 'lua gao') return 'Lúa gạo'
+  if (normalized === 'cashew' || normalized === 'hạt điều' || normalized === 'hat dieu') return 'Hạt điều'
 
-    if (Number.isFinite(normalized)) {
-      return normalized
-    }
-  }
-
-  return null
+  return 'Khác'
 }
 
-function normalizeCommodity(value: string): string {
-  const normalized = value.trim().toLowerCase()
-
-  if (normalized in commodityLabelMap) {
-    return commodityLabelMap[normalized as keyof typeof commodityLabelMap]
-  }
-
-  return value.trim() || 'Nông sản giao dịch'
+function normalizeType(value: string | null | undefined): ListingType {
+  return value === 'buy' ? 'buy' : 'sell'
 }
 
 function getPriceUnit(commodity: string): 'VNĐ/kg' | 'USD/tấn' {
   const normalized = commodity.trim().toLowerCase()
 
-  if (
-    normalized === 'rice' ||
-    normalized === 'cashew' ||
-    normalized === 'lúa gạo' ||
-    normalized === 'hạt điều'
-  ) {
+  if (normalized === 'lúa gạo' || normalized === 'hạt điều' || normalized === 'rice' || normalized === 'cashew') {
     return 'USD/tấn'
   }
 
@@ -137,170 +95,95 @@ function formatPrice(value: number, commodity: string): string {
 }
 
 function formatQuantity(value: number): string {
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value || 0)
+  return `${new Intl.NumberFormat('vi-VN', {
+    maximumFractionDigits: 1,
+  }).format(value || 0)} Tấn`
 }
 
-function formatTrustScore(value: number | null): string {
-  if (value === null) {
-    return 'Uy tín: Đang cập nhật'
-  }
-
-  const safeValue = Math.max(0, Math.min(100, Math.round(value)))
-  return `Uy tín: ${safeValue}/100`
-}
-
-function formatDateLabel(value: string | null): string {
+function formatDate(value: string | null): string {
   if (!value) {
-    return 'Mới đăng gần đây'
+    return 'Vừa đăng gần đây'
   }
 
   const parsed = new Date(value)
 
   if (Number.isNaN(parsed.getTime())) {
-    return 'Mới đăng gần đây'
+    return 'Vừa đăng gần đây'
   }
 
-  return `Cập nhật ${parsed.toLocaleDateString('vi-VN', {
+  return `Đăng ngày ${parsed.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   })}`
 }
 
-function getActionLabel(type: ListingType): string {
-  return type === 'sell' ? 'Liên hệ đối tác' : 'Thương lượng'
-}
-
-function parseListingsPayload(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) {
-    return payload
-  }
-
-  if (!payload || typeof payload !== 'object') {
-    return []
-  }
-
-  const record = payload as { listings?: unknown }
-  return Array.isArray(record.listings) ? record.listings : []
-}
-
-function normalizeListing(raw: unknown, index: number): MarketplaceListing | null {
-  if (!raw || typeof raw !== 'object') {
-    return null
-  }
-
-  const record = raw as Record<string, unknown>
-  const type = record.type === 'buy' ? 'buy' : record.type === 'sell' ? 'sell' : null
-
-  if (!type) {
-    return null
-  }
-
-  return {
-    id: toSafeText(record.id, `listing-${index}`),
-    type,
-    commodity: normalizeCommodity(toSafeText(record.commodity, 'Nông sản giao dịch')),
-    quantity: toSafeNumber(record.quantity, 0),
-    price: toSafeNumber(record.price, 0),
-    status: toSafeText(record.status, 'active'),
-    isBoosted: Boolean(record.is_boosted),
-    businessName: toSafeText(record.business_name, 'Đối tác đang cập nhật hồ sơ'),
-    trustScore: toOptionalNumber(record.trust_score),
-    verified: Boolean(record.verified),
-    createdAt: toSafeText(record.created_at, '') || null,
-  }
-}
-
-function ListingCardSkeleton() {
+function ListingSkeleton() {
   return (
-    <div className="animate-pulse rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="h-7 w-20 rounded-full bg-stone-200" />
-        <div className="h-7 w-16 rounded-full bg-stone-200" />
+    <div className="rounded-[1.5rem] border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="animate-pulse space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="h-7 w-20 rounded-full bg-gray-200" />
+          <div className="h-7 w-16 rounded-full bg-gray-200" />
+        </div>
+        <div className="h-8 w-4/5 rounded-xl bg-gray-200" />
+        <div className="h-5 w-28 rounded-lg bg-gray-200" />
+        <div className="h-12 w-full rounded-2xl bg-gray-200" />
+        <div className="space-y-2">
+          <div className="h-4 w-full rounded bg-gray-200" />
+          <div className="h-4 w-4/5 rounded bg-gray-200" />
+        </div>
+        <div className="h-12 w-full rounded-2xl bg-gray-200" />
+        <div className="h-4 w-28 rounded bg-gray-200" />
       </div>
-      <div className="mt-6 h-4 w-32 rounded bg-stone-200" />
-      <div className="mt-4 h-8 w-40 rounded bg-stone-200" />
-      <div className="mt-4 h-10 w-28 rounded bg-stone-200" />
-      <div className="mt-6 rounded-2xl border border-stone-100 bg-stone-50 p-4">
-        <div className="h-4 w-24 rounded bg-stone-200" />
-        <div className="mt-3 h-8 w-40 rounded bg-stone-200" />
-      </div>
-      <div className="mt-6 rounded-2xl border border-stone-100 bg-stone-50 p-4">
-        <div className="h-4 w-32 rounded bg-stone-200" />
-        <div className="mt-3 h-4 w-full rounded bg-stone-200" />
-        <div className="mt-2 h-4 w-28 rounded bg-stone-200" />
-      </div>
-      <div className="mt-6 h-12 w-full rounded-2xl bg-stone-200" />
     </div>
   )
 }
 
 export default function B2BMarketplacePage() {
-  const [listings, setListings] = useState<MarketplaceListing[]>([])
-  const [activeListingId, setActiveListingId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
+  const router = useRouter()
+  const [listings, setListings] = useState<ListingRecord[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [activeCategory, setActiveCategory] = useState<CategoryLabel>('Tất cả')
+  const [error, setError] = useState('')
+  const [dealInitiating, setDealInitiating] = useState<string | null>(null)
+  const [dealError, setDealError] = useState('')
 
   useEffect(() => {
     let isMounted = true
-    const controller = new AbortController()
 
     async function loadListings() {
-      setLoading(true)
-      setError(null)
-
       try {
-        const response = await fetch('/api/listings', {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-
-        const contentType = response.headers.get('content-type') ?? ''
-        const payload = contentType.includes('application/json') ? await response.json() : null
-
-        if (!response.ok) {
-          const message =
-            payload &&
-            typeof payload === 'object' &&
-            typeof (payload as { error?: unknown }).error === 'string'
-              ? (payload as { error: string }).error
-              : 'Không thể tải dữ liệu sàn giao thương lúc này.'
-
-          throw new Error(message)
-        }
-
-        const safeListings = parseListingsPayload(payload)
-          .map((item, index) => normalizeListing(item, index))
-          .filter((item): item is MarketplaceListing => item !== null)
+        const supabase = getSupabaseBrowserClient()
+        const { data, error: listingsError } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
 
         if (!isMounted) {
           return
         }
 
-        setListings(safeListings)
-        setActiveListingId((current) => {
-          if (current && safeListings.some((item) => item.id === current)) {
-            return current
-          }
-
-          return safeListings[0]?.id ?? null
-        })
-      } catch (fetchError) {
-        if (!isMounted || controller.signal.aborted) {
+        if (listingsError) {
+          console.error(`[B2B] Failed to fetch listings: ${listingsError.message}`)
+          setError('Không thể tải dữ liệu chợ lúc này. Vui lòng thử lại sau.')
+          setListings([])
           return
         }
 
+        setListings(Array.isArray(data) ? (data as ListingRecord[]) : [])
+      } catch (fetchError) {
+        if (!isMounted) {
+          return
+        }
+
+        console.error('[B2B] Unexpected marketplace error:', fetchError)
+        setError('Đã có lỗi xảy ra khi tải sàn giao thương.')
         setListings([])
-        setActiveListingId(null)
-        setError(
-          fetchError instanceof Error
-            ? fetchError.message
-            : 'Không thể tải dữ liệu sàn giao thương lúc này.',
-        )
       } finally {
-        if (isMounted && !controller.signal.aborted) {
-          setLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
         }
       }
     }
@@ -309,285 +192,256 @@ export default function B2BMarketplacePage() {
 
     return () => {
       isMounted = false
-      controller.abort()
     }
-  }, [reloadKey])
+  }, [])
 
-  const activeListing = listings.find((item) => item.id === activeListingId) ?? listings[0] ?? null
-  const totalListings = listings.length
-  const boostedCount = listings.filter((item) => item.isBoosted).length
-  const verifiedCount = listings.filter((item) => item.verified).length
-  const sellCount = listings.filter((item) => item.type === 'sell').length
-  const buyCount = listings.filter((item) => item.type === 'buy').length
+  const listingCards = useMemo<ListingCardViewModel[]>(() => {
+    return listings.map((listing) => {
+      const commodity = normalizeCommodity(listing.commodity)
+
+      return {
+        id: listing.id,
+        user_id: listing.user_id,
+        title: listing.title?.trim() || 'Tin giao thương chưa đặt tiêu đề',
+        commodity,
+        type: normalizeType(listing.type),
+        quantity: normalizeNumber(listing.quantity),
+        price: normalizeNumber(listing.price),
+        description:
+          listing.description?.trim() ||
+          'Tin đăng chưa có mô tả chi tiết. Nhấn vào để bắt đầu kết nối và thương lượng.',
+        createdAtLabel: formatDate(listing.created_at),
+        image_url: listing.image_url,
+      }
+    })
+  }, [listings])
+
+  const filteredListings = useMemo(() => {
+    if (activeCategory === 'Tất cả') {
+      return listingCards
+    }
+
+    return listingCards.filter((listing) => listing.commodity === activeCategory)
+  }, [activeCategory, listingCards])
+
+  const handleInitiateDeal = async (listing: ListingCardViewModel) => {
+    try {
+      setDealInitiating(listing.id)
+      setDealError('')
+
+      const supabase = getSupabaseBrowserClient()
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+
+      if (authError || !user) {
+        router.push('/login')
+        return
+      }
+
+      if (user.id === listing.user_id) {
+        setDealError('Bạn không thể tự thương lượng với lô hàng của chính mình.')
+        setDealInitiating(null)
+        return
+      }
+
+      const { data: deal, error: dealError } = await supabase
+        .from('deals')
+        .insert({
+          listing_id: listing.id,
+          buyer_id: user.id,
+          seller_id: listing.user_id,
+          status: 'pending',
+        })
+        .select()
+        .single()
+
+      if (dealError) {
+        setDealError(dealError.message || 'Không thể tạo phòng thương lượng. Vui lòng thử lại.')
+        setDealInitiating(null)
+        return
+      }
+
+      if (deal?.id) {
+        router.push(`/b2b/deal/${deal.id}`)
+      }
+    } catch (error) {
+      console.error('[B2B] Deal initiation error:', error)
+      setDealError('Đã có lỗi xảy ra. Vui lòng thử lại sau.')
+      setDealInitiating(null)
+    }
+  }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f8faf7_0%,#f7f7f5_42%,#ffffff_100%)] text-stone-950">
+    <main className="min-h-screen bg-gray-50 text-gray-950">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-        <section className="overflow-hidden rounded-[2.5rem] border border-stone-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_28%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-6 shadow-sm shadow-stone-950/5 lg:p-10">
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_340px] xl:items-end">
-            <div>
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">
-                <Sparkles className="h-4 w-4" />
-                Trading Network
-              </span>
-              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-                Sàn giao thương B2B
-              </h1>
-              <p className="mt-5 max-w-3xl text-base leading-8 text-stone-600">
-                Khám phá nguồn cung và nhu cầu nông sản với giao diện ưu tiên niềm tin, giá rõ ràng,
-                và tín hiệu uy tín giúp doanh nghiệp chốt cơ hội nhanh hơn.
-              </p>
-
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/b2b/post"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                >
-                  <Plus className="h-4 w-4" />
-                  + Đăng tin mới
-                </Link>
-                <Link
-                  href="/b2b/my-listings"
-                  className="inline-flex items-center justify-center rounded-full border border-stone-300 bg-white px-6 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
-                >
-                  Quản lý tin đăng
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-                  Tổng cơ hội đang mở
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-stone-950">{loading ? '...' : totalListings}</p>
-                <p className="mt-1 text-sm text-stone-600">nguồn cung và nhu cầu đang hiển thị</p>
-              </div>
-              <div className="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-                  Đối tác xác minh
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-stone-950">{loading ? '...' : verifiedCount}</p>
-                <p className="mt-1 text-sm text-stone-600">hồ sơ có tín hiệu tin cậy rõ ràng</p>
-              </div>
-            </div>
+        <section className="overflow-hidden rounded-[2rem] bg-emerald-900 px-6 py-8 text-white shadow-[0_24px_80px_-40px_rgba(6,78,59,0.85)] sm:px-8 sm:py-10 lg:px-10">
+          <div className="max-w-4xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-100">
+              <Sparkles className="h-4 w-4" />
+              Marketplace công khai
+            </span>
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+              Sàn Giao Thương Nông Sản B2B
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-8 text-emerald-50/85">
+              Kết nối trực tiếp nguồn cung uy tín với doanh nghiệp thu mua.
+            </p>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-stone-200 bg-white/85 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Chào bán</p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">{loading ? '...' : sellCount}</p>
-              <p className="mt-1 text-sm text-stone-600">listing bên bán sẵn sàng chào hàng</p>
-            </div>
-            <div className="rounded-3xl border border-stone-200 bg-white/85 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Nhu cầu mua</p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">{loading ? '...' : buyCount}</p>
-              <p className="mt-1 text-sm text-stone-600">doanh nghiệp đang tìm nguồn hàng phù hợp</p>
-            </div>
-            <div className="rounded-3xl border border-stone-200 bg-white/85 p-5 shadow-sm shadow-stone-950/5 backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">Vị trí Top</p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">{loading ? '...' : boostedCount}</p>
-              <p className="mt-1 text-sm text-stone-600">cơ hội nổi bật với ưu tiên hiển thị cao hơn</p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/b2b/post"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
+            >
+              <Plus className="h-4 w-4" />
+              Đăng tin mới
+            </Link>
+            <div className="inline-flex items-center rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-medium text-emerald-50/90">
+              {isLoading ? 'Đang tải dữ liệu thị trường...' : `${filteredListings.length} cơ hội đang hiển thị`}
             </div>
           </div>
         </section>
 
-        {activeListing && !loading && !error && listings.length > 0 && (
-          <section className="mt-6 rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-950/5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-stone-500">
-                  Đang ưu tiên cơ hội
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
-                  {typeConfig[activeListing.type].label} {activeListing.commodity} {formatQuantity(activeListing.quantity)} Tấn
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-stone-600">
-                  {activeListing.businessName} · {formatTrustScore(activeListing.trustScore)}
-                </p>
-              </div>
+        <section className="mt-6 rounded-[1.75rem] border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {categoryTabs.map((category) => {
+              const isActive = activeCategory === category
 
-              <div className="flex flex-wrap gap-3">
-                <span className="inline-flex items-center rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-semibold text-stone-700">
-                  {formatPrice(activeListing.price, activeListing.commodity)}
-                </span>
-                {activeListing.verified && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
-                    <BadgeCheck className="h-4 w-4" />
-                    Đã xác minh
-                  </span>
-                )}
-                {activeListing.isBoosted && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700">
-                    <Crown className="h-4 w-4" />
-                    Top hiển thị
-                  </span>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        <section className="mt-8 rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm shadow-stone-950/5 sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-stone-500">Marketplace Feed</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">
-                Cơ hội giao thương đang mở
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
-                Duyệt nhanh theo loại giao dịch, độ uy tín và vị trí nổi bật để chọn đúng đối tác cho
-                lô hàng hoặc nhu cầu thu mua tiếp theo.
-              </p>
-            </div>
-
-            {!loading && error && (
-              <button
-                type="button"
-                onClick={() => setReloadKey((current) => current + 1)}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Tải lại feed
-              </button>
-            )}
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setActiveCategory(category)}
+                  className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
+                      : 'border border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white hover:text-gray-900'
+                  }`}
+                >
+                  {category}
+                </button>
+              )
+            })}
           </div>
+        </section>
 
-          {loading ? (
-            <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }, (_, index) => (
-                <ListingCardSkeleton key={index} />
-              ))}
+        <section className="mt-8">
+          {isLoading ? (
+            <div className="rounded-[1.75rem] border border-gray-200 bg-white px-6 py-6 shadow-sm">
+              <div className="mb-6 flex items-center gap-3 text-gray-700">
+                <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
+                <p className="text-sm font-medium">Đang tải các lô hàng đang mở trên toàn hệ thống...</p>
+              </div>
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <ListingSkeleton />
+                <ListingSkeleton />
+                <ListingSkeleton />
+              </div>
             </div>
           ) : error ? (
-            <div className="mt-8 rounded-[1.75rem] border border-red-200 bg-red-50 p-6 sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-lg font-semibold text-red-900">Không thể tải sàn giao thương</p>
-                  <p className="mt-2 max-w-2xl text-sm leading-7 text-red-700">{error}</p>
-                </div>
-                <div className="rounded-2xl bg-white p-3 text-red-500 shadow-sm">
-                  <ShieldCheck className="h-6 w-6" />
-                </div>
-              </div>
+            <div className="rounded-[1.75rem] border border-red-200 bg-red-50 px-6 py-5 text-sm font-medium text-red-700">
+              {error}
             </div>
-          ) : listings.length === 0 ? (
-            <div className="mt-8 rounded-[1.9rem] border border-dashed border-stone-300 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.1),_transparent_38%),linear-gradient(180deg,#fafaf9_0%,#ffffff_100%)] px-6 py-14 text-center sm:px-10">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-900/10">
-                <Package className="h-10 w-10" />
+          ) : filteredListings.length === 0 ? (
+            <div className="rounded-[1.75rem] border border-gray-200 bg-white px-6 py-12 text-center shadow-sm">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <PackageOpen className="h-7 w-7" />
               </div>
-              <h3 className="mt-6 text-2xl font-semibold tracking-tight text-stone-950">
-                Chưa có tin giao thương nào trên feed
-              </h3>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-stone-600">
-                Hãy trở thành doanh nghiệp đầu tiên đăng tin để thu hút người mua hoặc nguồn hàng mới
-                trên sàn B2B của VIO AGRI.
+              <h2 className="mt-5 text-2xl font-semibold tracking-tight text-gray-950">
+                Chưa có tin phù hợp với nhóm “{activeCategory}”.
+              </h2>
+              <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-gray-600">
+                Hãy thử chuyển sang danh mục khác hoặc trở thành người đầu tiên đăng lô hàng mới cho khu vực này.
               </p>
               <Link
                 href="/b2b/post"
-                className="mt-8 inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
-                <Plus className="h-4 w-4" />
-                Đăng tin đầu tiên
+                Đăng tin cho danh mục này
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           ) : (
-            <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {listings.map((listing) => {
-                const config = typeConfig[listing.type]
-                const isActive = listing.id === activeListing?.id
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {filteredListings.map((listing) => {
+                const isSell = listing.type === 'sell'
+                const typeLabel = isSell ? 'Bán' : 'Mua'
+                const typeClassName = isSell
+                  ? 'bg-green-100 text-green-800 border border-green-200'
+                  : 'bg-blue-100 text-blue-800 border border-blue-200'
 
                 return (
                   <article
                     key={listing.id}
-                    className={`group relative overflow-hidden rounded-[1.75rem] border bg-white p-6 shadow-sm transition duration-200 ${
-                      listing.isBoosted
-                        ? 'border-amber-300 shadow-amber-100/80 hover:border-amber-400'
-                        : isActive
-                          ? 'border-stone-300 shadow-stone-950/10'
-                          : 'border-stone-200 shadow-stone-950/5 hover:-translate-y-1 hover:border-stone-300 hover:shadow-lg'
-                    }`}
+                    className="flex h-full flex-col rounded-[1.5rem] border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg overflow-hidden"
                   >
-                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${config.accentClassName}`} />
-
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex flex-wrap gap-2">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${config.badgeClassName}`}
-                        >
-                          {config.label}
-                        </span>
-                        {listing.isBoosted && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                            <Crown className="h-3.5 w-3.5" />
-                            Top
-                          </span>
-                        )}
-                      </div>
-
-                      {isActive && (
-                        <span className="inline-flex items-center rounded-full bg-stone-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
-                          Đang xem
-                        </span>
+                    {/* Image Container */}
+                    <div className="relative h-48 w-full overflow-hidden bg-gray-100">
+                      {listing.image_url ? (
+                        <img
+                          src={listing.image_url}
+                          alt={listing.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                          <ImageOff className="h-10 w-10 text-gray-400" />
+                          <p className="mt-2 text-xs font-medium text-gray-500">Chưa có hình ảnh</p>
+                        </div>
                       )}
-                    </div>
-
-                    <p className="mt-6 text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                      {formatDateLabel(listing.createdAt)}
-                    </p>
-
-                    <div className="mt-4">
-                      <h3 className="text-2xl font-semibold tracking-tight text-stone-950">
-                        {listing.commodity}
-                      </h3>
-                      <p className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">
-                        {formatQuantity(listing.quantity)}
-                        <span className="ml-2 text-lg font-medium text-stone-500">Tấn</span>
-                      </p>
-                    </div>
-
-                    <div className="mt-6 rounded-[1.5rem] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-                        Mức giá giao dịch
-                      </p>
-                      <p className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">
-                        {formatPrice(listing.price, listing.commodity)}
-                      </p>
-                    </div>
-
-                    <div className="mt-6 rounded-[1.5rem] border border-stone-200 bg-white p-4 shadow-sm shadow-stone-950/5">
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 text-stone-600">
-                          <Building2 className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-semibold text-stone-950">
-                            {listing.businessName}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-semibold text-stone-700">
-                              {formatTrustScore(listing.trustScore)}
-                            </span>
-                            {listing.verified && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                <BadgeCheck className="h-3.5 w-3.5" />
-                                Verified
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                      {/* Badges overlay */}
+                      <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-3">
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${typeClassName}`}>
+                          {typeLabel}
+                        </span>
+                        <span className="inline-flex rounded-full border border-white/30 bg-white/95 backdrop-blur-sm px-3 py-1 text-xs font-medium text-gray-600">
+                          {listing.commodity}
+                        </span>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      aria-pressed={isActive}
-                      onClick={() => setActiveListingId(listing.id)}
-                      className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[1.2rem] px-4 py-4 text-sm font-semibold transition focus:outline-none focus:ring-4 ${config.buttonClassName}`}
-                    >
-                      {getActionLabel(listing.type)}
-                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                    </button>
+                    {/* Content Container */}
+                    <div className="flex flex-1 flex-col p-6">
+                      <h3 className="text-2xl font-semibold tracking-tight text-gray-950 line-clamp-2">
+                        {listing.title}
+                      </h3>
+
+                      <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+                        <p className="text-base leading-7 text-gray-700">
+                          <span className="font-bold text-emerald-600">{formatPrice(listing.price, listing.commodity)}</span>
+                          {' '}- {formatQuantity(listing.quantity)}
+                        </p>
+                      </div>
+
+                      <p className="mt-4 line-clamp-2 text-sm leading-7 text-gray-600">
+                        {listing.description}
+                      </p>
+
+                      <div className="mt-auto pt-6">
+                        <button
+                          type="button"
+                          onClick={() => handleInitiateDeal(listing)}
+                          disabled={dealInitiating === listing.id}
+                          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gray-950 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:opacity-70"
+                        >
+                          {dealInitiating === listing.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Đang tạo phòng...
+                            </>
+                          ) : (
+                            <>
+                              Thương lượng ngay
+                              <ArrowRight className="h-4 w-4" />
+                            </>
+                          )}
+                        </button>
+
+                        <p className="mt-4 text-sm text-gray-500">{listing.createdAtLabel}</p>
+                      </div>
+                    </div>
                   </article>
                 )
               })}
@@ -595,6 +449,33 @@ export default function B2BMarketplacePage() {
           )}
         </section>
       </div>
+
+      {dealError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                  <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">Lỗi</h3>
+                <p className="mt-2 text-sm text-gray-600">{dealError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDealError('')}
+              className="mt-6 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 transition hover:bg-gray-200"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
